@@ -1,0 +1,14 @@
+---
+description: Database schema changes must use migrations, not push-based schema sync
+alwaysApply: true
+---
+
+# Database Migrations
+
+This project uses Drizzle migrations as the source of truth for database schema changes.
+
+- Do not use a `db push` workflow for schema changes.
+- When changing `packages/db/src/schema.ts`, generate and commit a migration with `pnpm db:generate`.
+- Apply migrations locally with `pnpm db:migrate`.
+- Commit generated files under `packages/db/drizzle/` together with the schema change.
+- Treat migration files as reviewed source code, not disposable generated output.

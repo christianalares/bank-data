@@ -1,0 +1,15 @@
+---
+description: This repo uses Biome for linting and formatting, not ESLint or Prettier
+alwaysApply: true
+---
+
+# Linting / Formatting
+
+This repo uses **Biome**, not ESLint or Prettier.
+
+- Do NOT add `// eslint-disable-next-line …` or `/* eslint-disable … */` comments anywhere. They are dead code.
+- If a Biome rule genuinely needs to be suppressed inline, use `// biome-ignore <rule>: <reason>` with a real justification.
+- Do NOT add `// prettier-ignore` either.
+- Prefer fixing the underlying issue over suppressing.
+
+Config lives in `biome.json` at the repo root.

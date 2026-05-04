@@ -1,5 +1,26 @@
 
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+.output/
+.nitro/
+.turbo/
+
+# Logs
+*.log
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
 .beads-credential-key
+.beads/issues.jsonl
+
+# bv (beads viewer) local config and caches
+.bv/

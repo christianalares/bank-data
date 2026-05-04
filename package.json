@@ -1,0 +1,36 @@
+{
+  "name": "bank-data",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
+  "scripts": {
+    "dev": "pnpm dev:infra && pnpm dev:apps",
+    "dev:apps": "turbo dev",
+    "dev:infra": "docker compose up -d postgres redis",
+    "dev:web": "pnpm --filter @bank-data/web dev",
+    "dev:worker": "pnpm --filter @bank-data/worker dev",
+    "build": "turbo build",
+    "start:web": "pnpm --filter @bank-data/web start",
+    "start:worker": "pnpm --filter @bank-data/worker start",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "db:generate": "pnpm --filter @bank-data/db db:generate",
+    "db:migrate": "pnpm --filter @bank-data/db db:migrate",
+    "db:seed": "pnpm --filter @bank-data/auth seed"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.5",
+    "dotenv-cli": "^11.0.0",
+    "turbo": "latest",
+    "typescript": "latest"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
+  }
+}

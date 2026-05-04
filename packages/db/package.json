@@ -1,0 +1,25 @@
+{
+  "name": "@bank-data/db",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "db:generate": "dotenv -e ../../.env -- drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "dotenv -e ../../.env -- drizzle-kit migrate --config drizzle.config.ts",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'No db tests yet'"
+  },
+  "dependencies": {
+    "drizzle-orm": "latest",
+    "postgres": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "drizzle-kit": "latest",
+    "typescript": "latest"
+  }
+}
