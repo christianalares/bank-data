@@ -1,6 +1,9 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { AlertProvider } from '#/components/alerts'
 import { AppShell } from '#/components/app-shell'
+import { ModalProvider } from '#/components/modals'
+import { SheetProvider } from '#/components/sheets'
 import { getCurrentSession } from '#/lib/session'
 
 export const Route = createFileRoute('/_protected')({
@@ -16,5 +19,16 @@ export const Route = createFileRoute('/_protected')({
       })
     }
   },
-  component: AppShell,
+  component: ProtectedLayout,
 })
+
+function ProtectedLayout() {
+  return (
+    <>
+      <SheetProvider />
+      <AlertProvider />
+      <ModalProvider />
+      <AppShell />
+    </>
+  )
+}

@@ -113,7 +113,6 @@ export const timeEntry = pgTable(
     stoppedAt: timestamp('stopped_at'),
     durationSeconds: integer('duration_seconds').notNull(),
     billable: boolean('billable').notNull().default(true),
-    exported: boolean('exported').notNull().default(false),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

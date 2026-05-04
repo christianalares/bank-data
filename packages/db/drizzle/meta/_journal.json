@@ -8,6 +8,13 @@
       "when": 1777885871634,
       "tag": "0000_overconfident_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777896194006,
+      "tag": "0001_abandoned_quasimodo",
+      "breakpoints": true
     }
   ]
 }

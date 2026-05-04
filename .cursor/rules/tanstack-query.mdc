@@ -1,0 +1,39 @@
+---
+description: TanStack Query patterns for queries, mutations, and cache invalidation
+globs: apps/web/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# TanStack Query
+
+Use the local `queries`, `mutations`, and `serverFns` barrels for app data access.
+
+- Prefer `useSuspenseQuery(queries.feature.name(input))` for route-backed reads.
+- Prefer `useMutation({ ...mutations.feature.name(), onSuccess })` for writes.
+- In mutation callbacks, use the callback context query client instead of calling `useQueryClient()` only for invalidation.
+- When invalidating, pass the query factory result directly to `invalidateQueries`. Do not unwrap `.queryKey`.
+
+```tsx
+const saveProjectMutation = useMutation({
+  ...mutations.tracker.saveProject(),
+  onSuccess: async (_result, _variables, _onMutateResult, context) => {
+    await context.client.invalidateQueries(queries.tracker.month({ month }))
+  },
+})
+```
+
+For UI event handlers that call a TanStack Query mutation, prefer `mutate(input, { onSuccess, onError })` over `await mutateAsync(...)` inside `try/catch`.
+
+```tsx
+saveProjectMutation.mutate(projectForm, {
+  onSuccess: () => {
+    toast.success('Project saved')
+  },
+  onError: (error) => {
+    const message = error instanceof Error ? error.message : 'Could not save project'
+    toast.error(message)
+  },
+})
+```
+
+Use `mutateAsync` only when the surrounding control flow genuinely needs an awaited result.

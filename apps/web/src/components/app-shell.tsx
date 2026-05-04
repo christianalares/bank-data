@@ -1,55 +1,52 @@
-import { Link, Outlet } from '@tanstack/react-router'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
-import { Badge } from '#/components/ui/badge'
+import { AppSidebar } from '#/components/layout/app-sidebar'
 import { Separator } from '#/components/ui/separator'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '#/components/ui/sidebar'
+import { TooltipProvider } from '#/components/ui/tooltip'
 
-const navigation = [
-  { to: '/', label: 'Dashboard' },
-  { to: '/tracker', label: 'Tracker' },
-  { to: '/transactions', label: 'Transactions' },
-  { to: '/inbox', label: 'Inbox' },
-  { to: '/exports', label: 'Exports' },
-  { to: '/settings', label: 'Settings' },
-] as const
+const pageTitles: Record<string, string> = {
+  '/': 'Dashboard',
+  '/transactions': 'Transactions',
+  '/tracker': 'Tracker',
+  '/inbox': 'Inbox',
+  '/exports': 'Exports',
+  '/settings': 'Settings',
+}
 
 export function AppShell({ children }: { children?: ReactNode }) {
+  const { location } = useRouterState()
+  const pageTitle = getPageTitle(location.pathname)
+
   return (
-    <div className="min-h-dvh bg-background">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Link to="/" className="font-heading text-xl font-semibold">
-                Bank Data
-              </Link>
-              <Badge variant="secondary">Private</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Personal time tracking, transactions, inbox matching, and accountant exports.
-            </p>
-          </div>
-          <nav className="flex flex-wrap items-center gap-2 text-sm">
-            {navigation.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                activeProps={{ 'data-active': true }}
-                className="rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
-        {children ?? <Outlet />}
-      </main>
-      <Separator />
-      <footer className="mx-auto max-w-6xl px-6 py-6 text-sm text-muted-foreground">
-        Built as a private app. No SaaS surface area, no team billing, no public API.
-      </footer>
-    </div>
+    <TooltipProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator
+              orientation="vertical"
+              className="mr-2 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
+            />
+            <p className="text-sm font-medium">{pageTitle}</p>
+          </header>
+          <main className="flex flex-1 flex-col overflow-y-auto">
+            <div className="flex w-full flex-col gap-6 px-6 py-8">{children ?? <Outlet />}</div>
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   )
+}
+
+function getPageTitle(pathname: string) {
+  if (pageTitles[pathname]) {
+    return pageTitles[pathname]
+  }
+
+  const prefix = Object.keys(pageTitles).find((key) => key !== '/' && pathname.startsWith(key))
+
+  return prefix ? pageTitles[prefix] : 'Bank Data'
 }

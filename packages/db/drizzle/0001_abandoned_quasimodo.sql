@@ -1,0 +1,1 @@
+ALTER TABLE "time_entry" DROP COLUMN "exported";
