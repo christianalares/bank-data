@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { ModulePage } from '#/components/module-page'
 
-export const Route = createFileRoute('/app/transactions')({
+export const Route = createFileRoute('/_protected/transactions')({
   component: TransactionsPage,
 })
 

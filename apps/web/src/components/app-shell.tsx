@@ -6,11 +6,11 @@ import { Separator } from '#/components/ui/separator'
 
 const navigation = [
   { to: '/', label: 'Dashboard' },
-  { to: '/app/tracker', label: 'Tracker' },
-  { to: '/app/transactions', label: 'Transactions' },
-  { to: '/app/inbox', label: 'Inbox' },
-  { to: '/app/exports', label: 'Exports' },
-  { to: '/app/settings', label: 'Settings' },
+  { to: '/tracker', label: 'Tracker' },
+  { to: '/transactions', label: 'Transactions' },
+  { to: '/inbox', label: 'Inbox' },
+  { to: '/exports', label: 'Exports' },
+  { to: '/settings', label: 'Settings' },
 ] as const
 
 export function AppShell({ children }: { children?: ReactNode }) {

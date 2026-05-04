@@ -10,14 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as AppRouteImport } from './routes/app'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppTransactionsRouteImport } from './routes/app/transactions'
-import { Route as AppTrackerRouteImport } from './routes/app/tracker'
-import { Route as AppSettingsRouteImport } from './routes/app/settings'
-import { Route as AppInboxRouteImport } from './routes/app/inbox'
-import { Route as AppExportsRouteImport } from './routes/app/exports'
-import { Route as AppDashboardRouteImport } from './routes/app/dashboard'
+import { Route as ProtectedRouteImport } from './routes/_protected'
+import { Route as ProtectedIndexRouteImport } from './routes/_protected/index'
+import { Route as ProtectedTransactionsRouteImport } from './routes/_protected/transactions'
+import { Route as ProtectedTrackerRouteImport } from './routes/_protected/tracker'
+import { Route as ProtectedSettingsRouteImport } from './routes/_protected/settings'
+import { Route as ProtectedInboxRouteImport } from './routes/_protected/inbox'
+import { Route as ProtectedExportsRouteImport } from './routes/_protected/exports'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const LoginRoute = LoginRouteImport.update({
@@ -25,45 +24,39 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRoute = AppRouteImport.update({
-  id: '/app',
-  path: '/app',
+const ProtectedRoute = ProtectedRouteImport.update({
+  id: '/_protected',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const ProtectedIndexRoute = ProtectedIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => ProtectedRoute,
 } as any)
-const AppTransactionsRoute = AppTransactionsRouteImport.update({
+const ProtectedTransactionsRoute = ProtectedTransactionsRouteImport.update({
   id: '/transactions',
   path: '/transactions',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => ProtectedRoute,
 } as any)
-const AppTrackerRoute = AppTrackerRouteImport.update({
+const ProtectedTrackerRoute = ProtectedTrackerRouteImport.update({
   id: '/tracker',
   path: '/tracker',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => ProtectedRoute,
 } as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
+const ProtectedSettingsRoute = ProtectedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => ProtectedRoute,
 } as any)
-const AppInboxRoute = AppInboxRouteImport.update({
+const ProtectedInboxRoute = ProtectedInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => ProtectedRoute,
 } as any)
-const AppExportsRoute = AppExportsRouteImport.update({
+const ProtectedExportsRoute = ProtectedExportsRouteImport.update({
   id: '/exports',
   path: '/exports',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDashboardRoute = AppDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => ProtectedRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
@@ -72,84 +65,73 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
+  '/': typeof ProtectedIndexRoute
   '/login': typeof LoginRoute
-  '/app/dashboard': typeof AppDashboardRoute
-  '/app/exports': typeof AppExportsRoute
-  '/app/inbox': typeof AppInboxRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/tracker': typeof AppTrackerRoute
-  '/app/transactions': typeof AppTransactionsRoute
+  '/exports': typeof ProtectedExportsRoute
+  '/inbox': typeof ProtectedInboxRoute
+  '/settings': typeof ProtectedSettingsRoute
+  '/tracker': typeof ProtectedTrackerRoute
+  '/transactions': typeof ProtectedTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
-  '/app/dashboard': typeof AppDashboardRoute
-  '/app/exports': typeof AppExportsRoute
-  '/app/inbox': typeof AppInboxRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/tracker': typeof AppTrackerRoute
-  '/app/transactions': typeof AppTransactionsRoute
+  '/exports': typeof ProtectedExportsRoute
+  '/inbox': typeof ProtectedInboxRoute
+  '/settings': typeof ProtectedSettingsRoute
+  '/tracker': typeof ProtectedTrackerRoute
+  '/transactions': typeof ProtectedTransactionsRoute
+  '/': typeof ProtectedIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
+  '/_protected': typeof ProtectedRouteWithChildren
   '/login': typeof LoginRoute
-  '/app/dashboard': typeof AppDashboardRoute
-  '/app/exports': typeof AppExportsRoute
-  '/app/inbox': typeof AppInboxRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/tracker': typeof AppTrackerRoute
-  '/app/transactions': typeof AppTransactionsRoute
+  '/_protected/exports': typeof ProtectedExportsRoute
+  '/_protected/inbox': typeof ProtectedInboxRoute
+  '/_protected/settings': typeof ProtectedSettingsRoute
+  '/_protected/tracker': typeof ProtectedTrackerRoute
+  '/_protected/transactions': typeof ProtectedTransactionsRoute
+  '/_protected/': typeof ProtectedIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/app'
     | '/login'
-    | '/app/dashboard'
-    | '/app/exports'
-    | '/app/inbox'
-    | '/app/settings'
-    | '/app/tracker'
-    | '/app/transactions'
+    | '/exports'
+    | '/inbox'
+    | '/settings'
+    | '/tracker'
+    | '/transactions'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
-    | '/app'
     | '/login'
-    | '/app/dashboard'
-    | '/app/exports'
-    | '/app/inbox'
-    | '/app/settings'
-    | '/app/tracker'
-    | '/app/transactions'
+    | '/exports'
+    | '/inbox'
+    | '/settings'
+    | '/tracker'
+    | '/transactions'
+    | '/'
     | '/api/auth/$'
   id:
     | '__root__'
-    | '/'
-    | '/app'
+    | '/_protected'
     | '/login'
-    | '/app/dashboard'
-    | '/app/exports'
-    | '/app/inbox'
-    | '/app/settings'
-    | '/app/tracker'
-    | '/app/transactions'
+    | '/_protected/exports'
+    | '/_protected/inbox'
+    | '/_protected/settings'
+    | '/_protected/tracker'
+    | '/_protected/transactions'
+    | '/_protected/'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AppRoute: typeof AppRouteWithChildren
+  ProtectedRoute: typeof ProtectedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
@@ -163,61 +145,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app': {
-      id: '/app'
-      path: '/app'
-      fullPath: '/app'
-      preLoaderRoute: typeof AppRouteImport
+    '/_protected': {
+      id: '/_protected'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof ProtectedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_protected/': {
+      id: '/_protected/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof ProtectedIndexRouteImport
+      parentRoute: typeof ProtectedRoute
     }
-    '/app/transactions': {
-      id: '/app/transactions'
+    '/_protected/transactions': {
+      id: '/_protected/transactions'
       path: '/transactions'
-      fullPath: '/app/transactions'
-      preLoaderRoute: typeof AppTransactionsRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/transactions'
+      preLoaderRoute: typeof ProtectedTransactionsRouteImport
+      parentRoute: typeof ProtectedRoute
     }
-    '/app/tracker': {
-      id: '/app/tracker'
+    '/_protected/tracker': {
+      id: '/_protected/tracker'
       path: '/tracker'
-      fullPath: '/app/tracker'
-      preLoaderRoute: typeof AppTrackerRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/tracker'
+      preLoaderRoute: typeof ProtectedTrackerRouteImport
+      parentRoute: typeof ProtectedRoute
     }
-    '/app/settings': {
-      id: '/app/settings'
+    '/_protected/settings': {
+      id: '/_protected/settings'
       path: '/settings'
-      fullPath: '/app/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/settings'
+      preLoaderRoute: typeof ProtectedSettingsRouteImport
+      parentRoute: typeof ProtectedRoute
     }
-    '/app/inbox': {
-      id: '/app/inbox'
+    '/_protected/inbox': {
+      id: '/_protected/inbox'
       path: '/inbox'
-      fullPath: '/app/inbox'
-      preLoaderRoute: typeof AppInboxRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/inbox'
+      preLoaderRoute: typeof ProtectedInboxRouteImport
+      parentRoute: typeof ProtectedRoute
     }
-    '/app/exports': {
-      id: '/app/exports'
+    '/_protected/exports': {
+      id: '/_protected/exports'
       path: '/exports'
-      fullPath: '/app/exports'
-      preLoaderRoute: typeof AppExportsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/dashboard': {
-      id: '/app/dashboard'
-      path: '/dashboard'
-      fullPath: '/app/dashboard'
-      preLoaderRoute: typeof AppDashboardRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/exports'
+      preLoaderRoute: typeof ProtectedExportsRouteImport
+      parentRoute: typeof ProtectedRoute
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -229,29 +204,30 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AppRouteChildren {
-  AppDashboardRoute: typeof AppDashboardRoute
-  AppExportsRoute: typeof AppExportsRoute
-  AppInboxRoute: typeof AppInboxRoute
-  AppSettingsRoute: typeof AppSettingsRoute
-  AppTrackerRoute: typeof AppTrackerRoute
-  AppTransactionsRoute: typeof AppTransactionsRoute
+interface ProtectedRouteChildren {
+  ProtectedExportsRoute: typeof ProtectedExportsRoute
+  ProtectedInboxRoute: typeof ProtectedInboxRoute
+  ProtectedSettingsRoute: typeof ProtectedSettingsRoute
+  ProtectedTrackerRoute: typeof ProtectedTrackerRoute
+  ProtectedTransactionsRoute: typeof ProtectedTransactionsRoute
+  ProtectedIndexRoute: typeof ProtectedIndexRoute
 }
 
-const AppRouteChildren: AppRouteChildren = {
-  AppDashboardRoute: AppDashboardRoute,
-  AppExportsRoute: AppExportsRoute,
-  AppInboxRoute: AppInboxRoute,
-  AppSettingsRoute: AppSettingsRoute,
-  AppTrackerRoute: AppTrackerRoute,
-  AppTransactionsRoute: AppTransactionsRoute,
+const ProtectedRouteChildren: ProtectedRouteChildren = {
+  ProtectedExportsRoute: ProtectedExportsRoute,
+  ProtectedInboxRoute: ProtectedInboxRoute,
+  ProtectedSettingsRoute: ProtectedSettingsRoute,
+  ProtectedTrackerRoute: ProtectedTrackerRoute,
+  ProtectedTransactionsRoute: ProtectedTransactionsRoute,
+  ProtectedIndexRoute: ProtectedIndexRoute,
 }
 
-const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(
+  ProtectedRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AppRoute: AppRouteWithChildren,
+  ProtectedRoute: ProtectedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }

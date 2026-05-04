@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from '#/components/ui/card'
 
-export const Route = createFileRoute('/app/tracker')({
+export const Route = createFileRoute('/_protected/tracker')({
   component: TrackerPage,
 })
 

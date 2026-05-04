@@ -11,7 +11,8 @@
     "db:migrate": "dotenv -e ../../.env -- drizzle-kit migrate --config drizzle.config.ts",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'No db tests yet'"
+    "test": "echo 'No db tests yet'",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "drizzle-orm": "latest",

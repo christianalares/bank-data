@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ModulePage } from '#/components/module-page'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
 
-export const Route = createFileRoute('/app/settings')({
+export const Route = createFileRoute('/_protected/settings')({
   component: SettingsPage,
 })
 

@@ -1,10 +1,9 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AppShell } from '#/components/app-shell'
-import { DashboardContent } from '#/components/dashboard-content'
 import { getCurrentSession } from '#/lib/session'
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute('/_protected')({
   beforeLoad: async ({ location }) => {
     const session = await getCurrentSession()
 
@@ -17,13 +16,5 @@ export const Route = createFileRoute('/')({
       })
     }
   },
-  component: Home,
+  component: AppShell,
 })
-
-function Home() {
-  return (
-    <AppShell>
-      <DashboardContent />
-    </AppShell>
-  )
-}

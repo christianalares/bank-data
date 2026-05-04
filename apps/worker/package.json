@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'No worker tests yet'"
+    "test": "echo 'No worker tests yet'",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@bank-data/jobs": "workspace:*"

@@ -8,7 +8,8 @@
   "scripts": {
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'No storage tests yet'"
+    "test": "echo 'No storage tests yet'",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "latest",

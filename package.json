@@ -19,7 +19,8 @@
     "test": "turbo test",
     "db:generate": "pnpm --filter @bank-data/db db:generate",
     "db:migrate": "pnpm --filter @bank-data/db db:migrate",
-    "db:seed": "pnpm --filter @bank-data/auth seed"
+    "db:seed": "pnpm --filter @bank-data/auth seed",
+    "check-types": "turbo typecheck"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
