@@ -6,7 +6,7 @@ accountant exports without SaaS surface area.
 ## Stack
 
 - TanStack Start web app in `apps/web`
-- BullMQ worker in `apps/worker`
+- BullMQ jobs service in `apps/jobs`
 - Postgres with Drizzle in `packages/db`
 - Better Auth in `packages/auth`
 - S3-compatible storage adapter in `packages/storage`
@@ -27,7 +27,7 @@ pnpm db:seed
 pnpm dev
 ```
 
-`pnpm dev` also runs `pnpm dev:infra` before starting the web and worker apps, so
+`pnpm dev` also runs `pnpm dev:infra` before starting the web and jobs apps, so
 you only need `pnpm dev:infra` separately when preparing the database before the
 first migration or seed.
 

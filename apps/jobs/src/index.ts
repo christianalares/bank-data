@@ -34,7 +34,7 @@ app.get('/readyz', async (c) => {
       queues: dashboard.queues.map((queue) => queue.queueName),
     })
   } catch (error) {
-    console.error('[worker] readiness check failed', error)
+    console.error('[jobs] readiness check failed', error)
 
     return c.json({ status: 'not_ready' }, 503)
   }
@@ -72,8 +72,8 @@ const server = serve(
     port,
   },
   (info) => {
-    console.info(`[worker] HTTP server listening on http://0.0.0.0:${info.port}`)
-    console.info('[worker] Bull Board available at /')
+    console.info(`[jobs] HTTP server listening on port ${info.port}`)
+    console.info('[jobs] Bull Board available at /')
   },
 )
 
