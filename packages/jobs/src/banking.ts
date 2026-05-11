@@ -120,7 +120,7 @@ export async function enqueueEnableBankingSyncNow(data: SyncEnableBankingConnect
 
 export async function processBankingJob(job: Job) {
   if (job.name === bankingJobNames.syncEnableBankingConnections) {
-    return syncEnableBankingConnections(job.data as SyncEnableBankingConnectionsData)
+    return syncEnableBankingConnections(job.data as SyncEnableBankingConnectionsData, job)
   }
 
   console.info(`[jobs] banking:${job.name} placeholder processed`, {
@@ -128,7 +128,7 @@ export async function processBankingJob(job: Job) {
   })
 }
 
-async function syncEnableBankingConnections(data: SyncEnableBankingConnectionsData) {
+async function syncEnableBankingConnections(data: SyncEnableBankingConnectionsData, job: Job) {
   const db = createDb()
   const connections = await db.query.bankConnection.findMany({
     where: (table, { and, eq }) =>
@@ -136,6 +136,10 @@ async function syncEnableBankingConnections(data: SyncEnableBankingConnectionsDa
   })
   let syncedAccounts = 0
   let syncedTransactions = 0
+
+  if (connections.length === 0) {
+    await job.log('No connected Enable Banking connections found; nothing to sync.')
+  }
 
   for (const connection of connections) {
     try {
