@@ -15,6 +15,13 @@
       "when": 1777896194006,
       "tag": "0001_abandoned_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777903720386,
+      "tag": "0002_rare_stepford_cuckoos",
+      "breakpoints": true
     }
   ]
 }

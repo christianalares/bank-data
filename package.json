@@ -20,6 +20,7 @@
     "db:generate": "pnpm --filter @bank-data/db db:generate",
     "db:migrate": "pnpm --filter @bank-data/db db:migrate",
     "db:seed": "pnpm --filter @bank-data/auth seed",
+    "db:studio": "pnpm --filter @bank-data/db db:studio",
     "check-types": "turbo typecheck"
   },
   "devDependencies": {

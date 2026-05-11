@@ -55,6 +55,11 @@ const footerItems: NavItem[] = [
     to: '/settings',
     icon: 'settings',
   },
+  {
+    label: 'Jobs',
+    to: '/jobs',
+    icon: 'listChecks',
+  },
 ]
 
 export function AppSidebar() {

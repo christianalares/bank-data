@@ -1,8 +1,12 @@
 import type { UseMutationOptions } from '@tanstack/react-query'
 
+import * as banking from './banking'
+import * as jobs from './jobs'
 import * as tracker from './tracker'
 
 export const mutations = {
+  banking,
+  jobs,
   tracker,
 }
 

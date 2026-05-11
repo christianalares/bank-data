@@ -1,6 +1,10 @@
+import * as banking from './banking'
+import * as jobs from './jobs'
 import * as tracker from './tracker'
 
 export const serverFns = {
+  banking,
+  jobs,
   tracker,
 }
 

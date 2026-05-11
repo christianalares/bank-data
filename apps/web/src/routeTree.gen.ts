@@ -15,9 +15,11 @@ import { Route as ProtectedIndexRouteImport } from './routes/_protected/index'
 import { Route as ProtectedTransactionsRouteImport } from './routes/_protected/transactions'
 import { Route as ProtectedTrackerRouteImport } from './routes/_protected/tracker'
 import { Route as ProtectedSettingsRouteImport } from './routes/_protected/settings'
+import { Route as ProtectedJobsRouteImport } from './routes/_protected/jobs'
 import { Route as ProtectedInboxRouteImport } from './routes/_protected/inbox'
 import { Route as ProtectedExportsRouteImport } from './routes/_protected/exports'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiBankingEnableBankingCallbackRouteImport } from './routes/api/banking/enable-banking/callback'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -48,6 +50,11 @@ const ProtectedSettingsRoute = ProtectedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => ProtectedRoute,
 } as any)
+const ProtectedJobsRoute = ProtectedJobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => ProtectedRoute,
+} as any)
 const ProtectedInboxRoute = ProtectedInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
@@ -63,26 +70,36 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBankingEnableBankingCallbackRoute =
+  ApiBankingEnableBankingCallbackRouteImport.update({
+    id: '/api/banking/enable-banking/callback',
+    path: '/api/banking/enable-banking/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ProtectedIndexRoute
   '/login': typeof LoginRoute
   '/exports': typeof ProtectedExportsRoute
   '/inbox': typeof ProtectedInboxRoute
+  '/jobs': typeof ProtectedJobsRoute
   '/settings': typeof ProtectedSettingsRoute
   '/tracker': typeof ProtectedTrackerRoute
   '/transactions': typeof ProtectedTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/banking/enable-banking/callback': typeof ApiBankingEnableBankingCallbackRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/exports': typeof ProtectedExportsRoute
   '/inbox': typeof ProtectedInboxRoute
+  '/jobs': typeof ProtectedJobsRoute
   '/settings': typeof ProtectedSettingsRoute
   '/tracker': typeof ProtectedTrackerRoute
   '/transactions': typeof ProtectedTransactionsRoute
   '/': typeof ProtectedIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/banking/enable-banking/callback': typeof ApiBankingEnableBankingCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -90,11 +107,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_protected/exports': typeof ProtectedExportsRoute
   '/_protected/inbox': typeof ProtectedInboxRoute
+  '/_protected/jobs': typeof ProtectedJobsRoute
   '/_protected/settings': typeof ProtectedSettingsRoute
   '/_protected/tracker': typeof ProtectedTrackerRoute
   '/_protected/transactions': typeof ProtectedTransactionsRoute
   '/_protected/': typeof ProtectedIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/banking/enable-banking/callback': typeof ApiBankingEnableBankingCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -103,37 +122,44 @@ export interface FileRouteTypes {
     | '/login'
     | '/exports'
     | '/inbox'
+    | '/jobs'
     | '/settings'
     | '/tracker'
     | '/transactions'
     | '/api/auth/$'
+    | '/api/banking/enable-banking/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/exports'
     | '/inbox'
+    | '/jobs'
     | '/settings'
     | '/tracker'
     | '/transactions'
     | '/'
     | '/api/auth/$'
+    | '/api/banking/enable-banking/callback'
   id:
     | '__root__'
     | '/_protected'
     | '/login'
     | '/_protected/exports'
     | '/_protected/inbox'
+    | '/_protected/jobs'
     | '/_protected/settings'
     | '/_protected/tracker'
     | '/_protected/transactions'
     | '/_protected/'
     | '/api/auth/$'
+    | '/api/banking/enable-banking/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   ProtectedRoute: typeof ProtectedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiBankingEnableBankingCallbackRoute: typeof ApiBankingEnableBankingCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -180,6 +206,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedSettingsRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/_protected/jobs': {
+      id: '/_protected/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof ProtectedJobsRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
     '/_protected/inbox': {
       id: '/_protected/inbox'
       path: '/inbox'
@@ -201,12 +234,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/banking/enable-banking/callback': {
+      id: '/api/banking/enable-banking/callback'
+      path: '/api/banking/enable-banking/callback'
+      fullPath: '/api/banking/enable-banking/callback'
+      preLoaderRoute: typeof ApiBankingEnableBankingCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface ProtectedRouteChildren {
   ProtectedExportsRoute: typeof ProtectedExportsRoute
   ProtectedInboxRoute: typeof ProtectedInboxRoute
+  ProtectedJobsRoute: typeof ProtectedJobsRoute
   ProtectedSettingsRoute: typeof ProtectedSettingsRoute
   ProtectedTrackerRoute: typeof ProtectedTrackerRoute
   ProtectedTransactionsRoute: typeof ProtectedTransactionsRoute
@@ -216,6 +257,7 @@ interface ProtectedRouteChildren {
 const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedExportsRoute: ProtectedExportsRoute,
   ProtectedInboxRoute: ProtectedInboxRoute,
+  ProtectedJobsRoute: ProtectedJobsRoute,
   ProtectedSettingsRoute: ProtectedSettingsRoute,
   ProtectedTrackerRoute: ProtectedTrackerRoute,
   ProtectedTransactionsRoute: ProtectedTransactionsRoute,
@@ -230,6 +272,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProtectedRoute: ProtectedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiBankingEnableBankingCallbackRoute: ApiBankingEnableBankingCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

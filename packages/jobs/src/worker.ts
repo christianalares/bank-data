@@ -1,5 +1,6 @@
 import { type Job, Worker } from 'bullmq'
 
+import { processBankingJob, setupBankingSchedules } from './banking'
 import { getRedisConnection } from './connection'
 import { type QueueName, queueNames } from './queues'
 
@@ -10,13 +11,15 @@ async function placeholderProcessor(job: Job) {
 }
 
 function createWorker(name: QueueName) {
-  return new Worker(name, placeholderProcessor, {
+  return new Worker(name, name === queueNames.banking ? processBankingJob : placeholderProcessor, {
     connection: getRedisConnection(),
     concurrency: 5,
   })
 }
 
 export async function startWorkers() {
+  await setupBankingSchedules()
+
   const workers = [
     createWorker(queueNames.banking),
     createWorker(queueNames.inbox),

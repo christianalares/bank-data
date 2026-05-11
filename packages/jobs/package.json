@@ -13,7 +13,9 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@bank-data/db": "workspace:*",
     "bullmq": "latest",
+    "drizzle-orm": "^0.45.2",
     "zod": "latest"
   },
   "devDependencies": {

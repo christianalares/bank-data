@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -12,6 +14,17 @@ import {
 } from 'drizzle-orm/pg-core'
 
 export const timeEntrySource = pgEnum('time_entry_source', ['manual', 'timer'])
+export const bankingConnectionProvider = pgEnum('banking_connection_provider', [
+  'csv',
+  'enable_banking',
+])
+export const bankingConnectionStatus = pgEnum('banking_connection_status', [
+  'connected',
+  'error',
+  'pending',
+  'disconnected',
+])
+export const bankTransactionStatus = pgEnum('bank_transaction_status', ['booked', 'pending'])
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -120,5 +133,94 @@ export const timeEntry = pgTable(
     uniqueIndex('time_entry_active_timer_user_idx')
       .on(table.workspaceId, table.userId)
       .where(sql`${table.stoppedAt} is null`),
+  ],
+)
+
+export const bankConnection = pgTable(
+  'bank_connection',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    provider: bankingConnectionProvider('provider').notNull(),
+    providerConnectionId: text('provider_connection_id').notNull(),
+    name: text('name').notNull(),
+    status: bankingConnectionStatus('status').notNull().default('pending'),
+    errorMessage: text('error_message'),
+    rawMetadata: jsonb('raw_metadata'),
+    lastSyncedAt: timestamp('last_synced_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('bank_connection_provider_id_idx').on(
+      table.workspaceId,
+      table.provider,
+      table.providerConnectionId,
+    ),
+  ],
+)
+
+export const bankAccount = pgTable(
+  'bank_account',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => bankConnection.id, { onDelete: 'cascade' }),
+    providerAccountId: text('provider_account_id').notNull(),
+    name: text('name').notNull(),
+    iban: text('iban'),
+    currency: text('currency').notNull().default('SEK'),
+    accountType: text('account_type'),
+    currentBalance: numeric('current_balance', { precision: 14, scale: 2 }),
+    availableBalance: numeric('available_balance', { precision: 14, scale: 2 }),
+    rawMetadata: jsonb('raw_metadata'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('bank_account_provider_id_idx').on(table.connectionId, table.providerAccountId),
+    index('bank_account_workspace_idx').on(table.workspaceId),
+  ],
+)
+
+export const bankTransaction = pgTable(
+  'bank_transaction',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => bankConnection.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => bankAccount.id, { onDelete: 'cascade' }),
+    provider: bankingConnectionProvider('provider').notNull(),
+    providerTransactionId: text('provider_transaction_id').notNull(),
+    internalId: text('internal_id').notNull(),
+    status: bankTransactionStatus('status').notNull().default('booked'),
+    bookedAt: timestamp('booked_at').notNull(),
+    valueAt: timestamp('value_at'),
+    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+    currency: text('currency').notNull(),
+    description: text('description').notNull(),
+    merchantName: text('merchant_name'),
+    counterpartyName: text('counterparty_name'),
+    balanceAfterTransaction: numeric('balance_after_transaction', { precision: 14, scale: 2 }),
+    rawMetadata: jsonb('raw_metadata'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('bank_transaction_internal_id_idx').on(table.internalId),
+    index('bank_transaction_workspace_booked_idx').on(table.workspaceId, table.bookedAt),
+    index('bank_transaction_account_booked_idx').on(table.accountId, table.bookedAt),
   ],
 )
