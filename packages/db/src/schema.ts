@@ -14,6 +14,8 @@ import {
 } from 'drizzle-orm/pg-core'
 
 export const timeEntrySource = pgEnum('time_entry_source', ['manual', 'timer'])
+export const attachmentStatus = pgEnum('attachment_status', ['unmatched', 'matched', 'ignored'])
+export const attachmentSource = pgEnum('attachment_source', ['manual', 'email'])
 export const bankingConnectionProvider = pgEnum('banking_connection_provider', [
   'csv',
   'enable_banking',
@@ -214,6 +216,7 @@ export const bankTransaction = pgTable(
     merchantName: text('merchant_name'),
     counterpartyName: text('counterparty_name'),
     balanceAfterTransaction: numeric('balance_after_transaction', { precision: 14, scale: 2 }),
+    note: text('note'),
     rawMetadata: jsonb('raw_metadata'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -222,5 +225,29 @@ export const bankTransaction = pgTable(
     uniqueIndex('bank_transaction_internal_id_idx').on(table.internalId),
     index('bank_transaction_workspace_booked_idx').on(table.workspaceId, table.bookedAt),
     index('bank_transaction_account_booked_idx').on(table.accountId, table.bookedAt),
+  ],
+)
+
+export const attachment = pgTable(
+  'attachment',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    transactionId: uuid('transaction_id').references(() => bankTransaction.id, {
+      onDelete: 'set null',
+    }),
+    status: attachmentStatus('status').notNull().default('unmatched'),
+    source: attachmentSource('source').notNull().default('manual'),
+    s3Key: text('s3_key').notNull(),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('attachment_workspace_idx').on(table.workspaceId),
+    index('attachment_transaction_idx').on(table.transactionId),
   ],
 )

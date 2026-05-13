@@ -1,16 +1,17 @@
 import { createHash, randomUUID, sign } from 'node:crypto'
 
-import { auth } from '@bank-data/auth'
 import {
+  attachment,
   bankAccount,
   bankConnection,
   bankTransaction,
   createDb,
-  workspace,
 } from '@bank-data/db'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq } from 'drizzle-orm'
+
+import { getOrCreateWorkspace, getServerSession } from '#/features/banking/shared'
 
 type ImportCsvInput = {
   csv: string
@@ -99,12 +100,45 @@ type EnableBankingTransaction = {
   }
 }
 
+type UpdateTransactionNoteInput = {
+  transactionId: string
+  note: string | null
+}
+
+export const updateTransactionNote = createServerFn({ method: 'POST' })
+  .inputValidator((input: UpdateTransactionNoteInput) => input)
+  .handler(async ({ data }) => {
+    const session = await getServerSession()
+    const db = createDb()
+    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+
+    const [updated] = await db
+      .update(bankTransaction)
+      .set({
+        note: data.note,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(bankTransaction.id, data.transactionId),
+          eq(bankTransaction.workspaceId, ownerWorkspace.id),
+        ),
+      )
+      .returning({ id: bankTransaction.id })
+
+    if (!updated) {
+      throw new Error('Transaction not found')
+    }
+
+    return { ok: true }
+  })
+
 export const getTransactions = createServerFn({ method: 'GET' }).handler(async () => {
   const session = await getServerSession()
   const db = createDb()
   const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
 
-  const [accounts, transactions, connections] = await Promise.all([
+  const [accounts, transactions, connections, attachmentCounts] = await Promise.all([
     db.query.bankAccount.findMany({
       where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
       orderBy: (table) => [desc(table.updatedAt)],
@@ -118,9 +152,19 @@ export const getTransactions = createServerFn({ method: 'GET' }).handler(async (
       where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
       orderBy: (table) => [desc(table.updatedAt)],
     }),
+    db
+      .select({ transactionId: attachment.transactionId, count: count() })
+      .from(attachment)
+      .where(and(eq(attachment.workspaceId, ownerWorkspace.id)))
+      .groupBy(attachment.transactionId),
   ])
 
   const accountById = new Map(accounts.map((account) => [account.id, account]))
+  const attachmentCountById = new Map(
+    attachmentCounts
+      .filter((r) => r.transactionId !== null)
+      .map((r) => [r.transactionId as string, r.count]),
+  )
   const latestConnection = connections[0]
 
   return {
@@ -143,8 +187,11 @@ export const getTransactions = createServerFn({ method: 'GET' }).handler(async (
         description: transaction.description,
         merchantName: transaction.merchantName,
         counterpartyName: transaction.counterpartyName,
+        balanceAfterTransaction: transaction.balanceAfterTransaction,
         status: transaction.status,
         provider: transaction.provider,
+        note: transaction.note,
+        attachmentCount: attachmentCountById.get(transaction.id) ?? 0,
       }
     }),
     stats: {
@@ -812,40 +859,6 @@ function getEnableBankingTransactionId(
     fallback.description,
     fallback.balanceAfterTransaction ?? '',
   ])
-}
-
-async function getServerSession() {
-  const request = getRequest()
-  const session = await auth.api.getSession({
-    headers: request.headers,
-  })
-
-  if (!session) {
-    throw new Error('Unauthorized')
-  }
-
-  return session
-}
-
-async function getOrCreateWorkspace(ownerId: string) {
-  const db = createDb()
-  const existingWorkspace = await db.query.workspace.findFirst({
-    where: (table, { eq }) => eq(table.ownerId, ownerId),
-  })
-
-  if (existingWorkspace) {
-    return existingWorkspace
-  }
-
-  const [createdWorkspace] = await db
-    .insert(workspace)
-    .values({
-      name: 'Bank Data',
-      ownerId,
-    })
-    .returning()
-
-  return createdWorkspace
 }
 
 function parseCsv(csv: string) {

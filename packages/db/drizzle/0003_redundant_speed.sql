@@ -1,0 +1,1 @@
+ALTER TABLE "bank_transaction" ADD COLUMN "note" text;

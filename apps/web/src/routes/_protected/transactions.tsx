@@ -4,30 +4,28 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import { Badge } from '#/components/ui/badge'
+import { pushSheet } from '#/components/sheets'
 import { Button } from '#/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
+import { DataTable } from '#/components/ui/data-table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '#/components/ui/empty'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#/components/ui/table'
+import { getTransactionColumnSizing } from '#/features/banking/column-sizing'
+import type { TransactionRow } from '#/features/banking/transaction-columns'
+import { useTransactionsTable } from '#/features/banking/use-transactions-table'
 import { mutations } from '#/mutations'
 import { queries } from '#/queries'
 
 export const Route = createFileRoute('/_protected/transactions')({
-  loader: ({ context }) => context.queryClient.ensureQueryData(queries.banking.transactions()),
+  loader: async ({ context }) => {
+    const [, columnSizing] = await Promise.all([
+      context.queryClient.ensureQueryData(queries.banking.transactions()),
+      getTransactionColumnSizing(),
+    ])
+    return { columnSizing }
+  },
   component: TransactionsPage,
-})
-
-const dateFormatter = new Intl.DateTimeFormat('en-SE', {
-  dateStyle: 'medium',
 })
 
 function TransactionsPage() {
@@ -55,102 +53,93 @@ function TransactionsPage() {
     })
   }
 
+  if (data.transactions.length > 0) {
+    return <TransactionsTable transactions={data.transactions} />
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Transactions</CardTitle>
-        <CardDescription>Latest bank transactions.</CardDescription>
       </CardHeader>
       <CardContent>
-        {data.transactions.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.transactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell>{dateFormatter.format(new Date(transaction.bookedAt))}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{transaction.description}</span>
-                      {transaction.merchantName || transaction.counterpartyName ? (
-                        <span className="text-muted-foreground">
-                          {transaction.merchantName ?? transaction.counterpartyName}
-                        </span>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell>{transaction.accountName}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{transaction.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatMoney(transaction.amount, transaction.currency)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <Empty className="border">
-            <EmptyHeader>
-              <EmptyTitle>No transactions yet</EmptyTitle>
-              <EmptyDescription>
-                Connect the production bank account once, then scheduled jobs will keep this list up
-                to date.
-              </EmptyDescription>
-            </EmptyHeader>
-            <form className="w-full max-w-md" onSubmit={handleConnectBank}>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="aspsp-name">Bank / ASPSP name</FieldLabel>
-                  <Input
-                    id="aspsp-name"
-                    value={aspspName}
-                    placeholder="Example: Skandinaviska Enskilda Banken AB (publ)"
-                    onChange={(event) => {
-                      setAspspName(event.target.value)
-                    }}
-                    required
-                  />
-                  <FieldDescription>
-                    Use the exact Enable Banking ASPSP name for the bank.
-                  </FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="aspsp-country">Country</FieldLabel>
-                  <Input
-                    id="aspsp-country"
-                    value={aspspCountry}
-                    maxLength={2}
-                    onChange={(event) => {
-                      setAspspCountry(event.target.value.toUpperCase())
-                    }}
-                    required
-                  />
-                </Field>
-                <Button type="submit" disabled={startAuthorizationMutation.isPending}>
-                  {startAuthorizationMutation.isPending ? 'Starting connection...' : 'Connect bank'}
-                </Button>
-              </FieldGroup>
-            </form>
-          </Empty>
-        )}
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>No transactions yet</EmptyTitle>
+            <EmptyDescription>
+              Connect the production bank account once, then scheduled jobs will keep this list up
+              to date.
+            </EmptyDescription>
+          </EmptyHeader>
+          <form className="w-full max-w-md" onSubmit={handleConnectBank}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="aspsp-name">Bank / ASPSP name</FieldLabel>
+                <Input
+                  id="aspsp-name"
+                  value={aspspName}
+                  placeholder="Example: Skandinaviska Enskilda Banken AB (publ)"
+                  onChange={(event) => {
+                    setAspspName(event.target.value)
+                  }}
+                  required
+                />
+                <FieldDescription>
+                  Use the exact Enable Banking ASPSP name for the bank.
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="aspsp-country">Country</FieldLabel>
+                <Input
+                  id="aspsp-country"
+                  value={aspspCountry}
+                  maxLength={2}
+                  onChange={(event) => {
+                    setAspspCountry(event.target.value.toUpperCase())
+                  }}
+                  required
+                />
+              </Field>
+              <Button type="submit" disabled={startAuthorizationMutation.isPending}>
+                {startAuthorizationMutation.isPending ? 'Starting connection...' : 'Connect bank'}
+              </Button>
+            </FieldGroup>
+          </form>
+        </Empty>
       </CardContent>
     </Card>
   )
 }
 
-function formatMoney(amount: string, currency: string) {
-  return new Intl.NumberFormat('en-SE', {
-    style: 'currency',
-    currency,
-  }).format(Number(amount))
+function TransactionsTable({ transactions }: { transactions: TransactionRow[] }) {
+  const { columnSizing } = Route.useLoaderData()
+  const table = useTransactionsTable({ transactions, initialColumnSizing: columnSizing })
+  const selectedRows = table.getSelectedRowModel().rows
+  const hasSelection = selectedRows.length > 0
+
+  function handleExport() {
+    console.log('export')
+  }
+
+  function handleRowClick(transaction: TransactionRow) {
+    pushSheet('transaction', { transaction })
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <Input className="h-8 w-56" placeholder="Search…" />
+        {hasSelection && (
+          <span className="text-xs text-muted-foreground">{selectedRows.length} selected</span>
+        )}
+        <div className="flex-1" />
+        {hasSelection && (
+          <Button size="sm" variant="outline" onClick={handleExport}>
+            Export
+          </Button>
+        )}
+      </div>
+      <DataTable table={table} onRowClick={handleRowClick} />
+    </div>
+  )
 }

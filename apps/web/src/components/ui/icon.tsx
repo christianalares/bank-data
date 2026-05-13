@@ -11,6 +11,7 @@ import {
   Settings,
   Timer,
   Trash2,
+  Unlink,
 } from 'lucide-react'
 
 import { cn } from '#/lib/utils'
@@ -27,6 +28,7 @@ const icons = {
   settings: Settings,
   timer: Timer,
   trash: Trash2,
+  unlink: Unlink,
 }
 
 export type IconName = keyof typeof icons

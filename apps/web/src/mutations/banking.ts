@@ -19,3 +19,48 @@ export const startEnableBankingAuthorization = () =>
         data: input,
       }),
   })
+
+export const updateTransactionNote = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'updateTransactionNote'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.updateTransactionNote>) =>
+      serverFns.banking.updateTransactionNote({
+        data: input,
+      }),
+  })
+
+export const uploadAttachments = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'uploadAttachments'],
+    mutationFn: (formData: FormData) =>
+      serverFns.banking.uploadAttachments({
+        data: formData,
+      }),
+  })
+
+export const deleteAttachment = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'deleteAttachment'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.deleteAttachment>) =>
+      serverFns.banking.deleteAttachment({
+        data: input,
+      }),
+  })
+
+export const linkAttachmentToTransaction = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'linkAttachmentToTransaction'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.linkAttachmentToTransaction>) =>
+      serverFns.banking.linkAttachmentToTransaction({
+        data: input,
+      }),
+  })
+
+export const unlinkAttachment = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'unlinkAttachment'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.unlinkAttachment>) =>
+      serverFns.banking.unlinkAttachment({
+        data: input,
+      }),
+  })
