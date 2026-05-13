@@ -20,19 +20,32 @@ export type StorageClient = {
 
 export function createStorageClient(): StorageClient {
   const bucket = process.env.AWS_S3_BUCKET_NAME
+  const endpoint = process.env.AWS_ENDPOINT_URL
+  const region = process.env.AWS_DEFAULT_REGION
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
 
   if (!bucket) {
     throw new Error('AWS_S3_BUCKET_NAME is required')
   }
+  if (!endpoint) {
+    throw new Error('AWS_ENDPOINT_URL is required')
+  }
+  if (!region) {
+    throw new Error('AWS_DEFAULT_REGION is required')
+  }
+  if (!accessKeyId) {
+    throw new Error('AWS_ACCESS_KEY_ID is required')
+  }
+  if (!secretAccessKey) {
+    throw new Error('AWS_SECRET_ACCESS_KEY is required')
+  }
 
   const client = new S3Client({
-    endpoint: process.env.AWS_ENDPOINT_URL,
-    region: process.env.AWS_DEFAULT_REGION ?? 'auto',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? '',
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
-    },
-    forcePathStyle: false,
+    endpoint,
+    region,
+    credentials: { accessKeyId, secretAccessKey },
+    forcePathStyle: true,
   })
 
   return {
