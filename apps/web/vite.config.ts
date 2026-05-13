@@ -15,15 +15,20 @@ const config = defineConfig({
     allowedHosts: ['localhost3000-37.localcan.dev'],
   },
   ssr: {
-    // Force the workspace storage package and its AWS SDK deps to be
-    // bundled into the SSR output rather than treated as Node externals.
-    // Without this, Nitro/Rollup can't resolve the CJS→ESM interop for
-    // tslib helpers that the AWS SDK v3 relies on at runtime.
-    noExternal: ['@bank-data/storage', /^@aws-sdk\//],
+    // These packages use tslib in a way that triggers a broken CJS→ESM
+    // interop in Nitro's SSR bundler: __toESM(require_tslib()).default is
+    // always undefined because tslib sets __esModule:true without a .default
+    // export. Marking them external lets Node load them natively at runtime
+    // via CJS, bypassing the interop entirely.
+    external: ['bullmq', 'ioredis', '@ioredis/commands', '@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
   },
   plugins: [
     devtools(),
-    nitro({ rollupConfig: { external: [/^@sentry\//] } }),
+    nitro({
+      rollupConfig: {
+        external: [/^@sentry\//],
+      },
+    }),
     tailwindcss(),
     tanstackStart(),
     viteReact(),
