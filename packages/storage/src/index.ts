@@ -32,7 +32,7 @@ export function createStorageClient(): StorageClient {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? '',
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
     },
-    forcePathStyle: true,
+    forcePathStyle: false,
   })
 
   return {
