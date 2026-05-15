@@ -1,0 +1,1 @@
+{"version":3,"file":"stack-trace.d.ts","sourceRoot":"","sources":["../../../../src/ui/components/shared/stack-trace.tsx"],"names":[],"mappings":"AAKA,UAAU,eAAe;IACvB,KAAK,CAAC,EAAE,MAAM,CAAC;IACf,UAAU,CAAC,EAAE,MAAM,EAAE,CAAC;IACtB,SAAS,CAAC,EAAE,MAAM,CAAC;CACpB;AAED,wBAAgB,UAAU,CAAC,EAAE,KAAK,EAAE,UAAU,EAAE,SAAS,EAAE,EAAE,eAAe,kDA2E3E"}

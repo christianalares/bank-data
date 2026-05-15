@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./monitor": "./src/monitor/index.ts"
   },
   "scripts": {
     "lint": "biome check .",
@@ -16,6 +17,7 @@
     "@bank-data/db": "workspace:*",
     "bullmq": "latest",
     "drizzle-orm": "^0.45.2",
+    "lru-cache": "latest",
     "zod": "latest"
   },
   "devDependencies": {

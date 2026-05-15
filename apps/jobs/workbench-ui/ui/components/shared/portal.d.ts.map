@@ -1,0 +1,1 @@
+{"version":3,"file":"portal.d.ts","sourceRoot":"","sources":["../../../../src/ui/components/shared/portal.tsx"],"names":[],"mappings":"AAEA,OAAO,KAAK,KAAK,MAAM,OAAO,CAAC;AAG/B,UAAU,WAAW;IACnB,QAAQ,EAAE,KAAK,CAAC,SAAS,CAAC;IAC1B,SAAS,CAAC,EAAE,OAAO,GAAG,IAAI,CAAC;CAC5B;AAED,wBAAgB,MAAM,CAAC,EAAE,QAAQ,EAAE,SAAS,EAAE,EAAE,WAAW,4BAa1D"}
