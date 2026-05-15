@@ -1,34 +1,50 @@
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   CreditCard,
   Download,
+  ExternalLink,
+  File,
   Inbox,
   LayoutDashboard,
+  Link,
   ListChecks,
   type LucideProps,
+  Maximize,
   Plus,
+  Search,
   Settings,
   Timer,
   Trash2,
   Unlink,
+  Upload,
+  X,
 } from 'lucide-react'
 
 import { cn } from '#/lib/utils'
 
 const icons = {
+  check: Check,
   chevronLeft: ChevronLeft,
   chevronRight: ChevronRight,
   creditCard: CreditCard,
   download: Download,
+  externalLink: ExternalLink,
+  file: File,
   inbox: Inbox,
   layoutDashboard: LayoutDashboard,
+  link: Link,
   listChecks: ListChecks,
+  maximize: Maximize,
   plus: Plus,
+  search: Search,
   settings: Settings,
   timer: Timer,
   trash: Trash2,
   unlink: Unlink,
+  upload: Upload,
+  x: X,
 }
 
 export type IconName = keyof typeof icons

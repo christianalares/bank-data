@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { InboxIcon, UploadIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
 import { pushAlert } from '#/components/alerts'
 import type { InboxAttachment } from '#/components/inbox/attachment-card'
 import { AttachmentCard, AttachmentCardSkeleton } from '#/components/inbox/attachment-card'
+import { pushModal } from '#/components/modals'
 import { pushSheet } from '#/components/sheets'
 import { Button } from '#/components/ui/button'
+import { Icon } from '#/components/ui/icon'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs'
 import { cn } from '#/lib/utils'
 import { mutations } from '#/mutations'
@@ -134,7 +135,7 @@ function InboxPage() {
       {isDragActive ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 border-2 border-dashed border-primary px-16 py-12">
-            <UploadIcon className="size-10 text-primary" />
+            <Icon name="upload" className="size-10 text-primary" />
             <p className="text-lg font-medium text-primary">Drop to upload</p>
           </div>
         </div>
@@ -142,7 +143,7 @@ function InboxPage() {
 
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
-          <InboxIcon className="size-5 text-muted-foreground" />
+          <Icon name="inbox" className="size-5 text-muted-foreground" />
           <h1 className="text-lg font-semibold">Inbox</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -155,7 +156,7 @@ function InboxPage() {
             onChange={handleFileInputChange}
           />
           <Button size="sm" variant="outline" onClick={handleUploadButtonClick}>
-            <UploadIcon className="mr-1.5 size-3.5" />
+            <Icon name="upload" className="mr-1.5 size-3.5" />
             Upload
           </Button>
         </div>
@@ -164,33 +165,35 @@ function InboxPage() {
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
           <TabsList>
-            <TabsTrigger value="unmatched">
-              Unmatched
-              {counts.unmatched > 0 ? (
-                <span className="ml-1.5 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                  {counts.unmatched}
-                </span>
-              ) : null}
-            </TabsTrigger>
-            <TabsTrigger value="matched">
-              Matched
-              {counts.matched > 0 ? (
-                <span className="ml-1.5 bg-muted-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {counts.matched}
-                </span>
-              ) : null}
-            </TabsTrigger>
             <TabsTrigger value="all">
               All
-              {counts.all > 0 ? (
+              {counts.all > 0 && (
                 <span className="ml-1.5 bg-muted-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   {counts.all}
                 </span>
-              ) : null}
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger value="unmatched">
+              Unmatched
+              {counts.unmatched > 0 && (
+                <span className="ml-1.5 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  {counts.unmatched}
+                </span>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger value="matched">
+              Matched
+              {counts.matched > 0 && (
+                <span className="ml-1.5 bg-muted-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  {counts.matched}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
 
-          {(['unmatched', 'matched', 'all'] as const).map((tab) => (
+          {(['all', 'matched', 'unmatched'] as const).map((tab) => (
             <TabsContent key={tab} value={tab}>
               <AttachmentGrid
                 attachments={tab === activeTab ? activeAttachments : []}
@@ -198,6 +201,7 @@ function InboxPage() {
                 onCardClick={(att) => pushSheet('inboxAttachment', { attachment: att })}
                 onDelete={handleDeleteAttachment}
                 onUnlink={handleUnlinkAttachment}
+                onExpand={(att) => pushModal('attachmentPreview', { attachment: att })}
                 isEmpty={
                   (tab === activeTab ? activeAttachments : []).length === 0 && pendingCount === 0
                 }
@@ -216,6 +220,7 @@ type GridProps = {
   onCardClick: (att: InboxAttachment) => void
   onDelete: (attachmentId: string) => void
   onUnlink: (attachmentId: string) => void
+  onExpand: (att: InboxAttachment) => void
   isEmpty: boolean
 }
 
@@ -225,12 +230,13 @@ function AttachmentGrid({
   onCardClick,
   onDelete,
   onUnlink,
+  onExpand,
   isEmpty,
 }: GridProps) {
   if (isEmpty) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-        <InboxIcon className="size-10 text-muted-foreground/30" />
+        <Icon name="inbox" className="size-10 text-muted-foreground/30" />
         <p className="text-sm text-muted-foreground">No attachments here yet</p>
         <p className="text-xs text-muted-foreground/60">
           Drop files anywhere on this page or use the Upload button
@@ -255,6 +261,7 @@ function AttachmentGrid({
           onClick={() => onCardClick(att)}
           onDelete={() => onDelete(att.id)}
           onUnlink={() => onUnlink(att.id)}
+          onExpand={() => onExpand(att)}
         />
       ))}
     </div>

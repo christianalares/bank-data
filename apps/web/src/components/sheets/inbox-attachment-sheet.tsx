@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, FileIcon, LinkIcon, SearchIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
 import type { InboxAttachment } from '#/components/inbox/attachment-card'
+import { pushModal } from '#/components/modals'
+import { PdfViewer } from '#/components/pdf-viewer'
 import { Button } from '#/components/ui/button'
 import { Icon } from '#/components/ui/icon'
 import { Input } from '#/components/ui/input'
@@ -48,6 +49,7 @@ export function InboxAttachmentSheet({ attachment }: Props) {
   const [search, setSearch] = useState('')
   const queryClient = useQueryClient()
   const isImage = attachment.contentType.startsWith('image/')
+  const isPdf = attachment.contentType === 'application/pdf'
 
   const transactionsQuery = useQuery(queries.banking.transactions())
 
@@ -133,22 +135,37 @@ export function InboxAttachmentSheet({ attachment }: Props) {
         </SheetDescription>
       </SheetHeader>
 
-      <div className="bg-muted mx-4 overflow-hidden">
+      <div className="relative mx-4 overflow-hidden bg-muted group">
         {isImage ? (
           <img
             src={attachment.signedUrl}
             alt={attachment.filename}
             className="max-h-56 w-full object-contain"
           />
+        ) : isPdf ? (
+          <div className="max-h-56 overflow-hidden pointer-events-none select-none">
+            <PdfViewer url={attachment.signedUrl} maxWidth={400} pageLimit={1} />
+          </div>
         ) : (
           <div className="flex h-40 items-center justify-center gap-3 flex-col">
-            <FileIcon className="size-10 text-muted-foreground/50" />
             <Button asChild variant="outline" size="sm">
               <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
-                Open PDF
+                <Icon name="externalLink" className="size-3.5" />
+                Open file
               </a>
             </Button>
           </div>
+        )}
+
+        {(isImage || isPdf) && (
+          <button
+            type="button"
+            className="absolute right-2 top-2 flex size-7 items-center justify-center bg-background/80 text-foreground backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => pushModal('attachmentPreview', { attachment })}
+            aria-label="Expand preview"
+          >
+            <Icon name="maximize" className="size-3.5" />
+          </button>
         )}
       </div>
 
@@ -241,7 +258,7 @@ export function InboxAttachmentSheet({ attachment }: Props) {
       {!!attachment.transaction && (
         <div className="mx-4 mt-4 border border-green-500/30 bg-green-500/5 p-3">
           <div className="flex items-center gap-2">
-            <CheckIcon className="size-4 shrink-0 text-green-600 dark:text-green-400" />
+            <Icon name="check" className="size-4 shrink-0 text-green-600 dark:text-green-400" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-medium text-green-700 dark:text-green-300">
                 {attachment.transaction.merchantName ?? attachment.transaction.description}
@@ -268,12 +285,15 @@ export function InboxAttachmentSheet({ attachment }: Props) {
 
       <div className="flex flex-col gap-3 p-4 flex-1 min-h-0">
         <div className="flex items-center gap-2">
-          <LinkIcon className="size-3.5 text-muted-foreground shrink-0" />
+          <Icon name="link" className="size-3.5 text-muted-foreground shrink-0" />
           <p className="text-xs font-medium text-muted-foreground">Link to transaction</p>
         </div>
 
         <div className="relative">
-          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Icon
+            name="search"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground"
+          />
           <Input
             placeholder="Search by description or amount…"
             value={search}
@@ -321,7 +341,7 @@ export function InboxAttachmentSheet({ attachment }: Props) {
                       {dateFormatter.format(new Date(t.bookedAt))}
                     </p>
                   </div>
-                  {isLinked && <CheckIcon className="size-3.5 text-green-600 shrink-0" />}
+                  {isLinked && <Icon name="check" className="size-3.5 text-green-600 shrink-0" />}
                 </button>
               )
             })

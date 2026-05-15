@@ -1,8 +1,9 @@
-import { auth } from '@bank-data/auth'
-import { createDb, timeEntry, trackerProject, workspace } from '@bank-data/db'
+import { createDb, timeEntry, trackerProject } from '@bank-data/db'
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
 import { and, asc, eq, gte, lt } from 'drizzle-orm'
+
+import { getOrCreateWorkspace } from '#/features/banking/shared'
+import { authMiddleware } from '#/lib/middleware'
 
 type TrackerYearInput = {
   year?: number
@@ -36,16 +37,16 @@ type DeleteProjectInput = {
 }
 
 export const getTrackerYear = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
   .inputValidator((input: TrackerYearInput | undefined) => ({
     year: input?.year,
   }))
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .handler(async ({ data, context }) => {
     const db = createDb()
     const year = getYear(data.year)
     const yearStart = new Date(year, 0, 1)
     const yearEnd = new Date(year + 1, 0, 1)
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
 
     const [projects, entries] = await Promise.all([
       db.query.trackerProject.findMany({
@@ -94,11 +95,11 @@ export const getTrackerYear = createServerFn({ method: 'GET' })
   })
 
 export const saveTrackerProject = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
   .inputValidator((input: ProjectInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
     const now = new Date()
     const values = {
       name: data.name.trim(),
@@ -134,11 +135,11 @@ export const saveTrackerProject = createServerFn({ method: 'POST' })
   })
 
 export const deleteTrackerProject = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
   .inputValidator((input: DeleteProjectInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
     const project = await db.query.trackerProject.findFirst({
       where: (table, { and, eq }) =>
         and(eq(table.id, data.id), eq(table.workspaceId, ownerWorkspace.id)),
@@ -168,11 +169,11 @@ export const deleteTrackerProject = createServerFn({ method: 'POST' })
   })
 
 export const saveTimeEntry = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
   .inputValidator((input: TimeEntryInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
     const now = new Date()
     const startedAt = parseEntryDateTime(data.date, data.startTime)
     const stoppedAt = parseEntryDateTime(data.date, data.stopTime)
@@ -211,7 +212,7 @@ export const saveTimeEntry = createServerFn({ method: 'POST' })
           and(
             eq(timeEntry.id, data.id),
             eq(timeEntry.workspaceId, ownerWorkspace.id),
-            eq(timeEntry.userId, session.user.id),
+            eq(timeEntry.userId, context.session.user.id),
           ),
         )
 
@@ -223,7 +224,7 @@ export const saveTimeEntry = createServerFn({ method: 'POST' })
       .values({
         ...values,
         workspaceId: ownerWorkspace.id,
-        userId: session.user.id,
+        userId: context.session.user.id,
         source: 'manual',
         createdAt: now,
       })
@@ -233,11 +234,11 @@ export const saveTimeEntry = createServerFn({ method: 'POST' })
   })
 
 export const deleteTimeEntry = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
   .inputValidator((input: DeleteTimeEntryInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
 
     await db
       .delete(timeEntry)
@@ -245,46 +246,12 @@ export const deleteTimeEntry = createServerFn({ method: 'POST' })
         and(
           eq(timeEntry.id, data.id),
           eq(timeEntry.workspaceId, ownerWorkspace.id),
-          eq(timeEntry.userId, session.user.id),
+          eq(timeEntry.userId, context.session.user.id),
         ),
       )
 
     return { ok: true }
   })
-
-async function getServerSession() {
-  const request = getRequest()
-  const session = await auth.api.getSession({
-    headers: request.headers,
-  })
-
-  if (!session) {
-    throw new Error('Unauthorized')
-  }
-
-  return session
-}
-
-async function getOrCreateWorkspace(ownerId: string) {
-  const db = createDb()
-  const existingWorkspace = await db.query.workspace.findFirst({
-    where: (table, { eq }) => eq(table.ownerId, ownerId),
-  })
-
-  if (existingWorkspace) {
-    return existingWorkspace
-  }
-
-  const [createdWorkspace] = await db
-    .insert(workspace)
-    .values({
-      name: 'Bank Data',
-      ownerId,
-    })
-    .returning()
-
-  return createdWorkspace
-}
 
 function getYear(year?: number) {
   if (year && Number.isInteger(year)) {

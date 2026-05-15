@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
 import { pushAlert } from '#/components/alerts'
+import { pushModal } from '#/components/modals'
+import { PdfThumbnail } from '#/components/pdf-thumbnail'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '#/components/ui/field'
@@ -15,7 +16,6 @@ import { UploadZone } from '#/components/upload-zone'
 import type { TransactionRow } from '#/features/banking/transaction-columns'
 import { mutations } from '#/mutations'
 import { queries } from '#/queries'
-import { serverFns } from '#/server-fns'
 
 function formatMoney(amount: string, currency: string) {
   return new Intl.NumberFormat('en-SE', {
@@ -140,17 +140,6 @@ export function TransactionSheet({ transaction }: Props) {
     [transaction.id, uploadAttachmentsMutation],
   )
 
-  async function handleOpenAttachment(attachmentId: string) {
-    try {
-      const { url } = await serverFns.banking.getAttachmentSignedUrl({
-        data: { attachmentId },
-      })
-      window.open(url, '_blank')
-    } catch {
-      toast.error('Could not open attachment')
-    }
-  }
-
   const amount = Number(transaction.amount)
   const isDebit = amount < 0
 
@@ -229,19 +218,23 @@ export function TransactionSheet({ transaction }: Props) {
                     <p className="mb-2 text-[10px] uppercase tracking-wide text-amber-600/70 dark:text-amber-400/70">
                       Potential match from inbox
                     </p>
-                    <div className="flex items-center gap-2">
-                      <FileIcon className="size-4 shrink-0 text-amber-600/60 dark:text-amber-400/60" />
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left text-xs font-medium text-amber-700 hover:underline dark:text-amber-300"
-                        onClick={() => handleOpenAttachment(att.id)}
-                      >
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 w-full text-left"
+                      onClick={() => pushModal('attachmentPreview', { attachment: att })}
+                    >
+                      <AttachmentThumbnail
+                        att={att}
+                        size={36}
+                        className="shrink-0 rounded-sm overflow-hidden border border-amber-500/20"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-amber-700 dark:text-amber-300">
                         {att.filename}
-                      </button>
-                      <p className="shrink-0 text-xs text-amber-600/70 dark:text-amber-400/70">
+                      </span>
+                      <span className="shrink-0 text-xs text-amber-600/70 dark:text-amber-400/70">
                         {formatBytes(att.sizeBytes)}
-                      </p>
-                    </div>
+                      </span>
+                    </button>
                     <div className="mt-2 flex justify-end gap-1.5">
                       <Button
                         size="sm"
@@ -273,18 +266,24 @@ export function TransactionSheet({ transaction }: Props) {
             {attachmentsQuery.data && attachmentsQuery.data.length > 0 ? (
               <ul className="space-y-1">
                 {attachmentsQuery.data.map((att) => (
-                  <li key={att.id} className="flex items-center gap-2 border px-3 py-2 text-sm">
-                    <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <li key={att.id} className="flex items-center gap-2 border px-2 py-2 text-sm">
                     <button
                       type="button"
-                      className="min-w-0 flex-1 truncate text-left hover:underline"
-                      onClick={() => handleOpenAttachment(att.id)}
+                      className="flex items-center gap-2 min-w-0 flex-1"
+                      onClick={() => pushModal('attachmentPreview', { attachment: att })}
                     >
-                      {att.filename}
+                      <AttachmentThumbnail
+                        att={att}
+                        size={36}
+                        className="shrink-0 rounded-sm overflow-hidden border"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+                        {att.filename}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {formatBytes(att.sizeBytes)}
+                      </span>
                     </button>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {formatBytes(att.sizeBytes)}
-                    </span>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -317,5 +316,30 @@ export function TransactionSheet({ transaction }: Props) {
         </div>
       </div>
     </SheetContent>
+  )
+}
+
+type AttachmentThumbnailProps = {
+  att: { contentType: string; signedUrl: string; filename: string; id: string }
+  size: number
+  className?: string
+}
+
+function AttachmentThumbnail({ att, size, className }: AttachmentThumbnailProps) {
+  const isImage = att.contentType.startsWith('image/')
+  const isPdf = att.contentType === 'application/pdf'
+
+  return (
+    <div className={className} style={{ width: size, height: size }}>
+      {isImage ? (
+        <img src={att.signedUrl} alt={att.filename} className="h-full w-full object-cover" />
+      ) : isPdf ? (
+        <PdfThumbnail url={att.signedUrl} cacheKey={att.id} width={size} />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-muted">
+          <Icon name="file" className="size-4 text-muted-foreground/50" />
+        </div>
+      )}
+    </div>
   )
 }

@@ -1,25 +1,39 @@
-import { createDb } from '@bank-data/db'
+import {
+  attachmentSelectSchema,
+  bankTransactionSelectSchema,
+  createDb,
+  type DatabaseTable,
+} from '@bank-data/db'
 import { attachment, bankTransaction } from '@bank-data/db/schema'
 import type { processAttachmentTask } from '@bank-data/jobs'
 import { createStorageClient } from '@bank-data/storage'
 import { createServerFn } from '@tanstack/react-start'
 import { tasks } from '@trigger.dev/sdk'
 import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
-
-import { getOrCreateWorkspace, getServerSession } from '#/features/banking/shared'
+import { z } from 'zod'
+import { getOrCreateWorkspace } from '#/features/banking/shared'
+import { authMiddleware } from '#/lib/middleware'
 import { createShortId } from '#/lib/short-id'
 
-type AttachmentIdInput = {
-  attachmentId: string
-}
+const attachmentIdSchema = z.object({ attachmentId: attachmentSelectSchema.shape.id })
+const transactionIdSchema = z.object({ transactionId: bankTransactionSelectSchema.shape.id })
+const linkSchema = z.object({
+  attachmentId: attachmentSelectSchema.shape.id,
+  transactionId: bankTransactionSelectSchema.shape.id,
+})
+const inboxStatusSchema = z.object({
+  status: z.enum(['all', 'matched', 'unmatched']),
+})
 
-type TransactionIdInput = {
-  transactionId: string
-}
+const ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+] as const
 
-type InboxStatusFilter = 'all' | 'matched' | 'unmatched'
-
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
+type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number]
 
 function buildS3Key(workspaceId: string, filename: string): string {
   const lastDot = filename.lastIndexOf('.')
@@ -30,28 +44,35 @@ function buildS3Key(workspaceId: string, filename: string): string {
   return `${workspaceId}/attachments/${safeStem}-${shortId}${ext}`
 }
 
+const uploadInputSchema = z.object({
+  transactionId: bankTransactionSelectSchema.shape.id.nullable(),
+  source: attachmentSelectSchema.shape.source.default('manual'),
+  files: z
+    .array(z.instanceof(File))
+    .min(1, 'No files provided')
+    .refine(
+      (files) => files.every((f) => ALLOWED_MIME_TYPES.includes(f.type as AllowedMimeType)),
+      'One or more files have an unsupported type',
+    ),
+})
+
 export const uploadAttachments = createServerFn({ method: 'POST' })
-  .inputValidator((input: FormData) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator((formData: FormData) =>
+    uploadInputSchema.parse({
+      transactionId: formData.get('transactionId') ?? null,
+      source: formData.get('source') ?? undefined,
+      files: formData.getAll('files'),
+    }),
+  )
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
-    const transactionId = (data.get('transactionId') as string | null) ?? null
-    const source = (data.get('source') as 'manual' | 'email' | null) ?? 'manual'
-    const files = data.getAll('files') as File[]
-
-    if (files.length === 0) {
-      throw new Error('No files provided')
-    }
-
-    const invalidFile = files.find((f) => !ALLOWED_MIME_TYPES.includes(f.type))
-    if (invalidFile) {
-      throw new Error(`File type not allowed: ${invalidFile.type}`)
-    }
+    const { transactionId, source, files } = data
 
     const storage = createStorageClient()
-    const inserted: Array<typeof attachment.$inferSelect> = []
+    const inserted: DatabaseTable.Attachment[] = []
 
     for (const file of files) {
       const key = buildS3Key(workspace.id, file.name)
@@ -68,18 +89,21 @@ export const uploadAttachments = createServerFn({ method: 'POST' })
           source,
           s3Key: key,
           filename: file.name,
-          contentType: file.type,
+          contentType: file.type as AllowedMimeType,
           sizeBytes: file.size,
         })
         .returning()
 
       inserted.push(row)
 
-      if (!transactionId && file.type === 'application/pdf') {
+      const isProcessable = file.type === 'application/pdf' || file.type.startsWith('image/')
+
+      if (!transactionId && isProcessable) {
         await tasks.trigger<typeof processAttachmentTask>('process-attachment', {
           attachmentStorageKey: key,
           correlationId: row.id,
           workspaceId: workspace.id,
+          contentType: file.type as AllowedMimeType,
         })
       }
     }
@@ -88,11 +112,11 @@ export const uploadAttachments = createServerFn({ method: 'POST' })
   })
 
 export const getInboxAttachments = createServerFn({ method: 'GET' })
-  .inputValidator((input: { status: InboxStatusFilter }) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(inboxStatusSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
     const storage = createStorageClient()
 
     const statusCondition =
@@ -203,11 +227,11 @@ export const getInboxAttachments = createServerFn({ method: 'GET' })
   })
 
 export const linkAttachmentToTransaction = createServerFn({ method: 'POST' })
-  .inputValidator((input: { attachmentId: string; transactionId: string }) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(linkSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const [updated] = await db
       .update(attachment)
@@ -223,11 +247,11 @@ export const linkAttachmentToTransaction = createServerFn({ method: 'POST' })
   })
 
 export const approveSuggestedMatch = createServerFn({ method: 'POST' })
-  .inputValidator((input: AttachmentIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(attachmentIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const row = await db.query.attachment.findFirst({
       where: (table, { and, eq }) =>
@@ -256,11 +280,11 @@ export const approveSuggestedMatch = createServerFn({ method: 'POST' })
   })
 
 export const dismissSuggestedMatch = createServerFn({ method: 'POST' })
-  .inputValidator((input: AttachmentIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(attachmentIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const [updated] = await db
       .update(attachment)
@@ -276,11 +300,11 @@ export const dismissSuggestedMatch = createServerFn({ method: 'POST' })
   })
 
 export const unlinkAttachment = createServerFn({ method: 'POST' })
-  .inputValidator((input: AttachmentIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(attachmentIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const [updated] = await db
       .update(attachment)
@@ -296,11 +320,11 @@ export const unlinkAttachment = createServerFn({ method: 'POST' })
   })
 
 export const getTransactionAttachments = createServerFn({ method: 'GET' })
-  .inputValidator((input: TransactionIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(transactionIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const rows = await db.query.attachment.findMany({
       where: (table, { eq, and }) =>
@@ -308,21 +332,25 @@ export const getTransactionAttachments = createServerFn({ method: 'GET' })
       orderBy: (table, { asc }) => [asc(table.createdAt)],
     })
 
-    return rows.map((row) => ({
-      id: row.id,
-      filename: row.filename,
-      contentType: row.contentType,
-      sizeBytes: row.sizeBytes,
-      createdAt: row.createdAt.toISOString(),
-    }))
+    const storage = createStorageClient()
+    return Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        filename: row.filename,
+        contentType: row.contentType,
+        sizeBytes: row.sizeBytes,
+        createdAt: row.createdAt.toISOString(),
+        signedUrl: await storage.getSignedReadUrl(row.s3Key, 60 * 15),
+      })),
+    )
   })
 
 export const getSuggestedAttachmentsForTransaction = createServerFn({ method: 'GET' })
-  .inputValidator((input: TransactionIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(transactionIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const rows = await db.query.attachment.findMany({
       where: (table, { eq, and }) =>
@@ -334,21 +362,25 @@ export const getSuggestedAttachmentsForTransaction = createServerFn({ method: 'G
       orderBy: (table, { asc }) => [asc(table.createdAt)],
     })
 
-    return rows.map((row) => ({
-      id: row.id,
-      filename: row.filename,
-      contentType: row.contentType,
-      sizeBytes: row.sizeBytes,
-      createdAt: row.createdAt.toISOString(),
-    }))
+    const storage = createStorageClient()
+    return Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        filename: row.filename,
+        contentType: row.contentType,
+        sizeBytes: row.sizeBytes,
+        createdAt: row.createdAt.toISOString(),
+        signedUrl: await storage.getSignedReadUrl(row.s3Key, 60 * 15),
+      })),
+    )
   })
 
 export const getAttachmentSignedUrl = createServerFn({ method: 'GET' })
-  .inputValidator((input: AttachmentIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(attachmentIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const row = await db.query.attachment.findFirst({
       where: (table, { eq, and }) =>
@@ -366,11 +398,11 @@ export const getAttachmentSignedUrl = createServerFn({ method: 'GET' })
   })
 
 export const deleteAttachment = createServerFn({ method: 'POST' })
-  .inputValidator((input: AttachmentIdInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .inputValidator(attachmentIdSchema)
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const workspace = await getOrCreateWorkspace(session.user.id)
+    const workspace = await getOrCreateWorkspace(context.session.user.id)
 
     const [deleted] = await db
       .delete(attachment)

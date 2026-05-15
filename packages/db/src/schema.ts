@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -291,3 +292,42 @@ export const attachment = pgTable(
     index('attachment_transaction_idx').on(table.transactionId),
   ],
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zod schemas — runtime validation + source of truth for all row types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const attachmentSelectSchema = createSelectSchema(attachment, {
+  // jsonb column: drizzle-zod cannot infer .$type<>(), so we provide it explicitly
+  parsedInvoice: parsedInvoiceSchema.nullable(),
+})
+
+export const attachmentInsertSchema = createInsertSchema(attachment, {
+  parsedInvoice: parsedInvoiceSchema.nullable(),
+})
+
+export const bankTransactionSelectSchema = createSelectSchema(bankTransaction)
+export const bankTransactionInsertSchema = createInsertSchema(bankTransaction)
+
+export const bankAccountSelectSchema = createSelectSchema(bankAccount)
+export const bankConnectionSelectSchema = createSelectSchema(bankConnection)
+export const workspaceSelectSchema = createSelectSchema(workspace)
+export const trackerProjectSelectSchema = createSelectSchema(trackerProject)
+export const timeEntrySelectSchema = createSelectSchema(timeEntry)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Row types — derived from the Zod schemas above, not hand-rolled
+// Indexed as DatabaseTable.Attachment, DatabaseTable.BankTransaction, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export namespace DatabaseTable {
+  export type Attachment = z.infer<typeof attachmentSelectSchema>
+  export type AttachmentInsert = z.infer<typeof attachmentInsertSchema>
+  export type BankTransaction = z.infer<typeof bankTransactionSelectSchema>
+  export type BankTransactionInsert = z.infer<typeof bankTransactionInsertSchema>
+  export type BankAccount = z.infer<typeof bankAccountSelectSchema>
+  export type BankConnection = z.infer<typeof bankConnectionSelectSchema>
+  export type Workspace = z.infer<typeof workspaceSelectSchema>
+  export type TrackerProject = z.infer<typeof trackerProjectSelectSchema>
+  export type TimeEntry = z.infer<typeof timeEntrySelectSchema>
+}

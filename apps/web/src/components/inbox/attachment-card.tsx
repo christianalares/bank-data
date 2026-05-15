@@ -1,37 +1,24 @@
-import type { ParsedInvoice } from '@bank-data/db'
-import { FileIcon } from 'lucide-react'
+import type { DatabaseTable } from '@bank-data/db'
 import type * as React from 'react'
 
+import { PdfThumbnail } from '#/components/pdf-thumbnail'
 import { Icon } from '#/components/ui/icon'
 import { Skeleton } from '#/components/ui/skeleton'
 import { Button } from '../ui/button'
 
-export type InboxAttachment = {
-  id: string
-  filename: string
-  contentType: string
-  sizeBytes: number
-  status: 'unmatched' | 'suggested' | 'matched' | 'ignored'
-  source: 'manual' | 'email'
+type TransactionSummary = Pick<
+  DatabaseTable.BankTransaction,
+  'id' | 'description' | 'merchantName' | 'amount' | 'currency'
+> & { bookedAt: string }
+
+export type InboxAttachment = Pick<
+  DatabaseTable.Attachment,
+  'id' | 'filename' | 'contentType' | 'sizeBytes' | 'status' | 'source' | 'parsedInvoice'
+> & {
   createdAt: string
   signedUrl: string
-  parsedInvoice: ParsedInvoice | null
-  transaction: {
-    id: string
-    description: string
-    merchantName: string | null
-    amount: string
-    currency: string
-    bookedAt: string
-  } | null
-  suggestedTransaction: {
-    id: string
-    description: string
-    merchantName: string | null
-    amount: string
-    currency: string
-    bookedAt: string
-  } | null
+  transaction: TransactionSummary | null
+  suggestedTransaction: TransactionSummary | null
 }
 
 function formatBytes(bytes: number): string {
@@ -57,10 +44,12 @@ type Props = {
   onClick: () => void
   onDelete: (event: React.MouseEvent) => void
   onUnlink: (event: React.MouseEvent) => void
+  onExpand: (event: React.MouseEvent) => void
 }
 
-export function AttachmentCard({ attachment, onClick, onDelete, onUnlink }: Props) {
+export function AttachmentCard({ attachment, onClick, onDelete, onUnlink, onExpand }: Props) {
   const isImage = attachment.contentType.startsWith('image/')
+  const isPdf = attachment.contentType === 'application/pdf'
   const isMatched = attachment.transaction !== null
   const label = attachment.transaction?.merchantName ?? attachment.transaction?.description
 
@@ -77,13 +66,28 @@ export function AttachmentCard({ attachment, onClick, onDelete, onUnlink }: Prop
             alt={attachment.filename}
             className="absolute inset-0 h-full w-full object-cover"
           />
+        ) : attachment.contentType === 'application/pdf' ? (
+          <PdfThumbnail url={attachment.signedUrl} cacheKey={attachment.id} />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <FileIcon className="size-10 text-muted-foreground/50" />
+            <Icon name="file" className="size-10 text-muted-foreground/50" />
           </div>
         )}
 
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+          {(isImage || isPdf) && (
+            <Button
+              size="icon-xs"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation()
+                onExpand(e)
+              }}
+            >
+              <Icon name="maximize" className="size-3" />
+            </Button>
+          )}
+
           {isMatched && (
             <Button
               size="icon-xs"

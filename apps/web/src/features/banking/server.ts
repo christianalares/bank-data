@@ -11,7 +11,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { and, count, desc, eq } from 'drizzle-orm'
 
-import { getOrCreateWorkspace, getServerSession } from '#/features/banking/shared'
+import { getOrCreateWorkspace } from '#/features/banking/shared'
+import { authMiddleware } from '#/lib/middleware'
 
 type ImportCsvInput = {
   csv: string
@@ -107,10 +108,10 @@ type UpdateTransactionNoteInput = {
 
 export const updateTransactionNote = createServerFn({ method: 'POST' })
   .inputValidator((input: UpdateTransactionNoteInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
 
     const [updated] = await db
       .update(bankTransaction)
@@ -133,97 +134,98 @@ export const updateTransactionNote = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
-export const getTransactions = createServerFn({ method: 'GET' }).handler(async () => {
-  const session = await getServerSession()
-  const db = createDb()
-  const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+export const getTransactions = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const db = createDb()
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
 
-  const [accounts, transactions, connections, attachmentCounts, suggestedAttachmentCounts] =
-    await Promise.all([
-      db.query.bankAccount.findMany({
-        where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
-        orderBy: (table) => [desc(table.updatedAt)],
+    const [accounts, transactions, connections, attachmentCounts, suggestedAttachmentCounts] =
+      await Promise.all([
+        db.query.bankAccount.findMany({
+          where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
+          orderBy: (table) => [desc(table.updatedAt)],
+        }),
+        db.query.bankTransaction.findMany({
+          where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
+          orderBy: (table) => [desc(table.bookedAt), desc(table.createdAt)],
+          limit: 100,
+        }),
+        db.query.bankConnection.findMany({
+          where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
+          orderBy: (table) => [desc(table.updatedAt)],
+        }),
+        db
+          .select({ transactionId: attachment.transactionId, count: count() })
+          .from(attachment)
+          .where(and(eq(attachment.workspaceId, ownerWorkspace.id)))
+          .groupBy(attachment.transactionId),
+        db
+          .select({ transactionId: attachment.suggestedTransactionId, count: count() })
+          .from(attachment)
+          .where(
+            and(eq(attachment.workspaceId, ownerWorkspace.id), eq(attachment.status, 'suggested')),
+          )
+          .groupBy(attachment.suggestedTransactionId),
+      ])
+
+    const accountById = new Map(accounts.map((account) => [account.id, account]))
+    const attachmentCountById = new Map(
+      attachmentCounts
+        .filter((r) => r.transactionId !== null)
+        .map((r) => [r.transactionId as string, r.count]),
+    )
+    const suggestedAttachmentCountById = new Map(
+      suggestedAttachmentCounts
+        .filter((r) => r.transactionId !== null)
+        .map((r) => [r.transactionId as string, r.count]),
+    )
+    const latestConnection = connections[0]
+
+    return {
+      accounts: accounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        currency: account.currency,
+        currentBalance: account.currentBalance,
+        availableBalance: account.availableBalance,
+      })),
+      transactions: transactions.map((transaction) => {
+        const account = accountById.get(transaction.accountId)
+
+        return {
+          id: transaction.id,
+          accountName: account?.name ?? 'Unknown account',
+          bookedAt: transaction.bookedAt.toISOString(),
+          amount: transaction.amount,
+          currency: transaction.currency,
+          description: transaction.description,
+          merchantName: transaction.merchantName,
+          counterpartyName: transaction.counterpartyName,
+          balanceAfterTransaction: transaction.balanceAfterTransaction,
+          status: transaction.status,
+          provider: transaction.provider,
+          note: transaction.note,
+          attachmentCount: attachmentCountById.get(transaction.id) ?? 0,
+          suggestedAttachmentCount: suggestedAttachmentCountById.get(transaction.id) ?? 0,
+        }
       }),
-      db.query.bankTransaction.findMany({
-        where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
-        orderBy: (table) => [desc(table.bookedAt), desc(table.createdAt)],
-        limit: 100,
-      }),
-      db.query.bankConnection.findMany({
-        where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
-        orderBy: (table) => [desc(table.updatedAt)],
-      }),
-      db
-        .select({ transactionId: attachment.transactionId, count: count() })
-        .from(attachment)
-        .where(and(eq(attachment.workspaceId, ownerWorkspace.id)))
-        .groupBy(attachment.transactionId),
-      db
-        .select({ transactionId: attachment.suggestedTransactionId, count: count() })
-        .from(attachment)
-        .where(
-          and(eq(attachment.workspaceId, ownerWorkspace.id), eq(attachment.status, 'suggested')),
-        )
-        .groupBy(attachment.suggestedTransactionId),
-    ])
-
-  const accountById = new Map(accounts.map((account) => [account.id, account]))
-  const attachmentCountById = new Map(
-    attachmentCounts
-      .filter((r) => r.transactionId !== null)
-      .map((r) => [r.transactionId as string, r.count]),
-  )
-  const suggestedAttachmentCountById = new Map(
-    suggestedAttachmentCounts
-      .filter((r) => r.transactionId !== null)
-      .map((r) => [r.transactionId as string, r.count]),
-  )
-  const latestConnection = connections[0]
-
-  return {
-    accounts: accounts.map((account) => ({
-      id: account.id,
-      name: account.name,
-      currency: account.currency,
-      currentBalance: account.currentBalance,
-      availableBalance: account.availableBalance,
-    })),
-    transactions: transactions.map((transaction) => {
-      const account = accountById.get(transaction.accountId)
-
-      return {
-        id: transaction.id,
-        accountName: account?.name ?? 'Unknown account',
-        bookedAt: transaction.bookedAt.toISOString(),
-        amount: transaction.amount,
-        currency: transaction.currency,
-        description: transaction.description,
-        merchantName: transaction.merchantName,
-        counterpartyName: transaction.counterpartyName,
-        balanceAfterTransaction: transaction.balanceAfterTransaction,
-        status: transaction.status,
-        provider: transaction.provider,
-        note: transaction.note,
-        attachmentCount: attachmentCountById.get(transaction.id) ?? 0,
-        suggestedAttachmentCount: suggestedAttachmentCountById.get(transaction.id) ?? 0,
-      }
-    }),
-    stats: {
-      transactionCount: transactions.length,
-      accountCount: accounts.length,
-      connectionStatus: latestConnection?.status ?? 'disconnected',
-      lastSyncedAt: latestConnection?.lastSyncedAt?.toISOString() ?? null,
-      errorMessage: latestConnection?.errorMessage ?? null,
-    },
-  }
-})
+      stats: {
+        transactionCount: transactions.length,
+        accountCount: accounts.length,
+        connectionStatus: latestConnection?.status ?? 'disconnected',
+        lastSyncedAt: latestConnection?.lastSyncedAt?.toISOString() ?? null,
+        errorMessage: latestConnection?.errorMessage ?? null,
+      },
+    }
+  })
 
 export const importTransactionsCsv = createServerFn({ method: 'POST' })
   .inputValidator((input: ImportCsvInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
     const rows = parseCsv(data.csv)
     const currency = normalizeCurrency(data.currency, ownerWorkspace.baseCurrency)
     const accountName = normalizeAccountName(data.accountName, rows)
@@ -496,11 +498,11 @@ async function syncEnableBankingConnection({
 
 export const startEnableBankingAuthorization = createServerFn({ method: 'POST' })
   .inputValidator((input: StartEnableBankingAuthorizationInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
     const request = getRequest()
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
     const state = randomUUID()
     const redirectUrl = `${getEnableBankingRedirectOrigin(request.url)}/api/banking/enable-banking/callback`
     const now = new Date()
@@ -554,10 +556,10 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
 
 export const completeEnableBankingAuthorization = createServerFn({ method: 'POST' })
   .inputValidator((input: CompleteEnableBankingAuthorizationInput) => input)
-  .handler(async ({ data }) => {
-    const session = await getServerSession()
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
     const pendingConnection = await db.query.bankConnection.findFirst({
       where: (table, { and, eq }) =>
         and(

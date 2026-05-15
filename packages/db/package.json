@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "drizzle-orm": "latest",
+    "drizzle-zod": "^0.8.3",
     "postgres": "latest",
     "zod": "^4.4.3"
   },
