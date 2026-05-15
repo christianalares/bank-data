@@ -1,7 +1,10 @@
 export {
+  approveSuggestedMatch,
   deleteAttachment,
+  dismissSuggestedMatch,
   getAttachmentSignedUrl,
   getInboxAttachments,
+  getSuggestedAttachmentsForTransaction,
   getTransactionAttachments,
   linkAttachmentToTransaction,
   unlinkAttachment,

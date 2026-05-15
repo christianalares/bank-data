@@ -15,6 +15,15 @@ import { queries } from '#/queries'
 
 import { popSheet } from '.'
 
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60">{label}</p>
+      <p className="truncate text-xs font-medium">{value}</p>
+    </div>
+  )
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`
@@ -70,6 +79,32 @@ export function InboxAttachmentSheet({ attachment }: Props) {
     },
   })
 
+  const approveMutation = useMutation({
+    ...mutations.banking.approveSuggestedMatch(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['banking', 'inbox'] })
+      queryClient.invalidateQueries(queries.banking.transactions())
+      toast.success('Match confirmed')
+      popSheet('inboxAttachment')
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not confirm match'
+      toast.error(message)
+    },
+  })
+
+  const dismissMutation = useMutation({
+    ...mutations.banking.dismissSuggestedMatch(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['banking', 'inbox'] })
+      toast.success('Suggestion dismissed')
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not dismiss suggestion'
+      toast.error(message)
+    },
+  })
+
   const transactions = transactionsQuery.data?.transactions ?? []
   const filtered = search.trim()
     ? transactions.filter((t) => {
@@ -117,7 +152,93 @@ export function InboxAttachmentSheet({ attachment }: Props) {
         )}
       </div>
 
-      {attachment.transaction ? (
+      {attachment.suggestedTransaction && !attachment.transaction ? (
+        <div className="mx-4 mt-4 border border-amber-500/30 bg-amber-500/5 p-3">
+          <p className="mb-2 text-[10px] uppercase tracking-wide text-amber-600/70 dark:text-amber-400/70">
+            Potential match found
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium text-amber-700 dark:text-amber-300">
+                {attachment.suggestedTransaction.merchantName ??
+                  attachment.suggestedTransaction.description}
+              </p>
+              <p className="text-xs text-amber-600/70 dark:text-amber-400/70">
+                {formatMoney(
+                  attachment.suggestedTransaction.amount,
+                  attachment.suggestedTransaction.currency,
+                )}{' '}
+                · {dateFormatter.format(new Date(attachment.suggestedTransaction.bookedAt))}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={dismissMutation.isPending || approveMutation.isPending}
+                onClick={() => dismissMutation.mutate({ attachmentId: attachment.id })}
+              >
+                Dismiss
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={approveMutation.isPending || dismissMutation.isPending}
+                onClick={() => approveMutation.mutate({ attachmentId: attachment.id })}
+              >
+                Confirm
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {!!attachment.parsedInvoice && (
+        <div className="mx-4 mt-4 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Extracted from document</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {!!attachment.parsedInvoice.vendorName && (
+              <MetaRow label="Vendor" value={attachment.parsedInvoice.vendorName} />
+            )}
+            {!!attachment.parsedInvoice.amount && !!attachment.parsedInvoice.currency && (
+              <MetaRow
+                label="Amount"
+                value={formatMoney(
+                  attachment.parsedInvoice.amount,
+                  attachment.parsedInvoice.currency,
+                )}
+              />
+            )}
+            {!!attachment.parsedInvoice.invoiceDate && (
+              <MetaRow label="Invoice date" value={attachment.parsedInvoice.invoiceDate} />
+            )}
+            {!!attachment.parsedInvoice.dueDate && (
+              <MetaRow label="Due date" value={attachment.parsedInvoice.dueDate} />
+            )}
+            {!!attachment.parsedInvoice.invoiceNumber && (
+              <MetaRow label="Invoice #" value={attachment.parsedInvoice.invoiceNumber} />
+            )}
+            {!!attachment.parsedInvoice.currency && !attachment.parsedInvoice.amount && (
+              <MetaRow label="Currency" value={attachment.parsedInvoice.currency} />
+            )}
+          </div>
+          {!!attachment.parsedInvoice.lineItems &&
+            attachment.parsedInvoice.lineItems.length > 0 && (
+              <div className="mt-1 space-y-1">
+                {attachment.parsedInvoice.lineItems.map((item, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: line items have no stable id
+                  <div key={i} className="flex items-baseline justify-between gap-2">
+                    <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+                    <p className="text-xs tabular-nums shrink-0">{item.amount}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+      )}
+
+      {!!attachment.transaction && (
         <div className="mx-4 mt-4 border border-green-500/30 bg-green-500/5 p-3">
           <div className="flex items-center gap-2">
             <CheckIcon className="size-4 shrink-0 text-green-600 dark:text-green-400" />
@@ -141,7 +262,7 @@ export function InboxAttachmentSheet({ attachment }: Props) {
             </Button>
           </div>
         </div>
-      ) : null}
+      )}
 
       <Separator className="mx-4 mt-4 w-auto" />
 
@@ -183,9 +304,9 @@ export function InboxAttachmentSheet({ attachment }: Props) {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium">{t.description}</p>
-                    {t.merchantName ? (
+                    {!!t.merchantName && (
                       <p className="truncate text-xs text-muted-foreground">{t.merchantName}</p>
-                    ) : null}
+                    )}
                   </div>
                   <div className="shrink-0 text-right">
                     <p
@@ -200,7 +321,7 @@ export function InboxAttachmentSheet({ attachment }: Props) {
                       {dateFormatter.format(new Date(t.bookedAt))}
                     </p>
                   </div>
-                  {isLinked ? <CheckIcon className="size-3.5 text-green-600 shrink-0" /> : null}
+                  {isLinked && <CheckIcon className="size-3.5 text-green-600 shrink-0" />}
                 </button>
               )
             })

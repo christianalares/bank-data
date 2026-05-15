@@ -1,0 +1,3 @@
+ALTER TYPE "public"."attachment_status" ADD VALUE 'suggested' BEFORE 'matched';--> statement-breakpoint
+ALTER TABLE "attachment" ADD COLUMN "suggested_transaction_id" uuid;--> statement-breakpoint
+ALTER TABLE "attachment" ADD CONSTRAINT "attachment_suggested_transaction_id_bank_transaction_id_fk" FOREIGN KEY ("suggested_transaction_id") REFERENCES "public"."bank_transaction"("id") ON DELETE set null ON UPDATE no action;

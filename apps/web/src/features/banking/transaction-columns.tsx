@@ -17,6 +17,7 @@ export type TransactionRow = {
   provider: string
   note: string | null
   attachmentCount: number
+  suggestedAttachmentCount: number
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-SE', { dateStyle: 'medium' })
@@ -130,9 +131,14 @@ export const transactionColumns: ColumnDef<TransactionRow>[] = [
     accessorFn: (row) => row.attachmentCount,
     cell: ({ row }) => {
       const count = row.original.attachmentCount
+      const suggested = row.original.suggestedAttachmentCount
 
       if (count > 0) {
         return <Badge variant="success">Matched</Badge>
+      }
+
+      if (suggested > 0) {
+        return <Badge variant="warning">Suggested</Badge>
       }
 
       return <Badge variant="secondary">No attachment</Badge>

@@ -45,6 +45,7 @@ export function TransactionSheet({ transaction }: Props) {
   const queryClient = useQueryClient()
 
   const attachmentsQuery = useQuery(queries.banking.transactionAttachments(transaction.id))
+  const suggestedAttachmentsQuery = useQuery(queries.banking.suggestedAttachments(transaction.id))
 
   const updateNoteMutation = useMutation({
     ...mutations.banking.updateTransactionNote(),
@@ -80,6 +81,35 @@ export function TransactionSheet({ transaction }: Props) {
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Could not unlink attachment'
+      toast.error(message)
+    },
+  })
+
+  const approveSuggestionMutation = useMutation({
+    ...mutations.banking.approveSuggestedMatch(),
+    onSuccess: () => {
+      queryClient.invalidateQueries(queries.banking.transactionAttachments(transaction.id))
+      queryClient.invalidateQueries(queries.banking.suggestedAttachments(transaction.id))
+      queryClient.invalidateQueries(queries.banking.transactions())
+      queryClient.invalidateQueries({ queryKey: ['banking', 'inbox'] })
+      toast.success('Match confirmed')
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not confirm match'
+      toast.error(message)
+    },
+  })
+
+  const dismissSuggestionMutation = useMutation({
+    ...mutations.banking.dismissSuggestedMatch(),
+    onSuccess: () => {
+      queryClient.invalidateQueries(queries.banking.suggestedAttachments(transaction.id))
+      queryClient.invalidateQueries(queries.banking.transactions())
+      queryClient.invalidateQueries({ queryKey: ['banking', 'inbox'] })
+      toast.success('Suggestion dismissed')
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not dismiss suggestion'
       toast.error(message)
     },
   })
@@ -191,6 +221,54 @@ export function TransactionSheet({ transaction }: Props) {
 
           <div className="space-y-3">
             <p className="text-sm font-medium">Attachments</p>
+
+            {suggestedAttachmentsQuery.data && suggestedAttachmentsQuery.data.length > 0 ? (
+              <div className="space-y-2">
+                {suggestedAttachmentsQuery.data.map((att) => (
+                  <div key={att.id} className="border border-amber-500/30 bg-amber-500/5 p-3">
+                    <p className="mb-2 text-[10px] uppercase tracking-wide text-amber-600/70 dark:text-amber-400/70">
+                      Potential match from inbox
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <FileIcon className="size-4 shrink-0 text-amber-600/60 dark:text-amber-400/60" />
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate text-left text-xs font-medium text-amber-700 hover:underline dark:text-amber-300"
+                        onClick={() => handleOpenAttachment(att.id)}
+                      >
+                        {att.filename}
+                      </button>
+                      <p className="shrink-0 text-xs text-amber-600/70 dark:text-amber-400/70">
+                        {formatBytes(att.sizeBytes)}
+                      </p>
+                    </div>
+                    <div className="mt-2 flex justify-end gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={
+                          dismissSuggestionMutation.isPending || approveSuggestionMutation.isPending
+                        }
+                        onClick={() => dismissSuggestionMutation.mutate({ attachmentId: att.id })}
+                      >
+                        Dismiss
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={
+                          approveSuggestionMutation.isPending || dismissSuggestionMutation.isPending
+                        }
+                        onClick={() => approveSuggestionMutation.mutate({ attachmentId: att.id })}
+                      >
+                        Confirm
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {attachmentsQuery.data && attachmentsQuery.data.length > 0 ? (
               <ul className="space-y-1">

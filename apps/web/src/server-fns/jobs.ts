@@ -1,23 +1,14 @@
 import { auth } from '@bank-data/auth'
-import { enqueueEnableBankingSyncNow, getJobsDashboard } from '@bank-data/jobs'
+import type { syncBankingTask } from '@bank-data/jobs'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-
-export const getDashboard = createServerFn({ method: 'GET' }).handler(async () => {
-  await requireServerSession()
-
-  return getJobsDashboard()
-})
+import { tasks } from '@trigger.dev/sdk'
 
 export const syncBankingNow = createServerFn({ method: 'POST' }).handler(async () => {
   await requireServerSession()
-  const job = await enqueueEnableBankingSyncNow({
-    overlapDays: 14,
-  })
+  const handle = await tasks.trigger<typeof syncBankingTask>('sync-banking', { overlapDays: 14 })
 
-  return {
-    id: job.id,
-  }
+  return { id: handle.id }
 })
 
 async function requireServerSession() {

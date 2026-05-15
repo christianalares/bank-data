@@ -3,25 +3,28 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./worker": "./src/worker.ts",
-    "./monitor": "./src/monitor/index.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
+    "trigger:dev": "dotenv -e ../../.env -- trigger dev",
+    "trigger:deploy": "dotenv -e ../../.env -- trigger deploy",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'No jobs tests yet'",
-    "check-types": "tsc --noEmit"
+    "test": "echo 'No jobs tests yet'"
   },
   "dependencies": {
+    "@ai-sdk/mistral": "^3.0.37",
     "@bank-data/db": "workspace:*",
-    "bullmq": "latest",
+    "@bank-data/storage": "workspace:*",
+    "@trigger.dev/sdk": "^4.4.6",
+    "ai": "^6.0.182",
     "drizzle-orm": "^0.45.2",
-    "lru-cache": "latest",
     "zod": "latest"
   },
   "devDependencies": {
     "@types/node": "latest",
+    "dotenv-cli": "^11.0.0",
+    "trigger.dev": "^4.4.6",
     "typescript": "latest"
   }
 }

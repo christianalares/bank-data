@@ -14,6 +14,7 @@ export type PutObjectInput = {
 
 export type StorageClient = {
   putObject(input: PutObjectInput): Promise<void>
+  getObjectBytes(key: string): Promise<Buffer>
   getSignedReadUrl(key: string, expiresInSeconds?: number): Promise<string>
   deleteObject(key: string): Promise<void>
 }
@@ -58,6 +59,26 @@ export function createStorageClient(): StorageClient {
           ContentType: input.contentType,
         }),
       )
+    },
+    async getObjectBytes(key) {
+      const response = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+        }),
+      )
+
+      if (!response.Body) {
+        throw new Error(`Storage object not found: ${key}`)
+      }
+
+      const chunks: Uint8Array[] = []
+
+      for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+        chunks.push(chunk)
+      }
+
+      return Buffer.concat(chunks)
     },
     async getSignedReadUrl(key, expiresInSeconds = 60 * 15) {
       return getSignedUrl(

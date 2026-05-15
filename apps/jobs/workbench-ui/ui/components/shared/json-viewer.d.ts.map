@@ -1,1 +1,0 @@
-{"version":3,"file":"json-viewer.d.ts","sourceRoot":"","sources":["../../../../src/ui/components/shared/json-viewer.tsx"],"names":[],"mappings":"AAIA,UAAU,eAAe;IACvB,IAAI,EAAE,OAAO,CAAC;IACd,SAAS,CAAC,EAAE,MAAM,CAAC;IACnB,eAAe,CAAC,EAAE,OAAO,CAAC;CAC3B;AAED,wBAAgB,UAAU,CAAC,EACzB,IAAI,EACJ,SAAS,EACT,eAAsB,GACvB,EAAE,eAAe,2CA2BjB"}

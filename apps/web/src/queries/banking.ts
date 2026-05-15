@@ -14,9 +14,17 @@ export const transactionAttachments = (transactionId: string) =>
     queryFn: () => serverFns.banking.getTransactionAttachments({ data: { transactionId } }),
   })
 
+export const suggestedAttachments = (transactionId: string) =>
+  queryOptions({
+    queryKey: ['banking', 'suggested-attachments', transactionId],
+    queryFn: () =>
+      serverFns.banking.getSuggestedAttachmentsForTransaction({ data: { transactionId } }),
+    staleTime: 1000 * 30,
+  })
+
 export const inboxAttachments = (status: 'all' | 'matched' | 'unmatched') =>
   queryOptions({
     queryKey: ['banking', 'inbox', status],
     queryFn: () => serverFns.banking.getInboxAttachments({ data: { status } }),
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 30,
   })

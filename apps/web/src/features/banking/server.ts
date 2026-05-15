@@ -138,30 +138,43 @@ export const getTransactions = createServerFn({ method: 'GET' }).handler(async (
   const db = createDb()
   const ownerWorkspace = await getOrCreateWorkspace(session.user.id)
 
-  const [accounts, transactions, connections, attachmentCounts] = await Promise.all([
-    db.query.bankAccount.findMany({
-      where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
-      orderBy: (table) => [desc(table.updatedAt)],
-    }),
-    db.query.bankTransaction.findMany({
-      where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
-      orderBy: (table) => [desc(table.bookedAt), desc(table.createdAt)],
-      limit: 100,
-    }),
-    db.query.bankConnection.findMany({
-      where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
-      orderBy: (table) => [desc(table.updatedAt)],
-    }),
-    db
-      .select({ transactionId: attachment.transactionId, count: count() })
-      .from(attachment)
-      .where(and(eq(attachment.workspaceId, ownerWorkspace.id)))
-      .groupBy(attachment.transactionId),
-  ])
+  const [accounts, transactions, connections, attachmentCounts, suggestedAttachmentCounts] =
+    await Promise.all([
+      db.query.bankAccount.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
+        orderBy: (table) => [desc(table.updatedAt)],
+      }),
+      db.query.bankTransaction.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
+        orderBy: (table) => [desc(table.bookedAt), desc(table.createdAt)],
+        limit: 100,
+      }),
+      db.query.bankConnection.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, ownerWorkspace.id),
+        orderBy: (table) => [desc(table.updatedAt)],
+      }),
+      db
+        .select({ transactionId: attachment.transactionId, count: count() })
+        .from(attachment)
+        .where(and(eq(attachment.workspaceId, ownerWorkspace.id)))
+        .groupBy(attachment.transactionId),
+      db
+        .select({ transactionId: attachment.suggestedTransactionId, count: count() })
+        .from(attachment)
+        .where(
+          and(eq(attachment.workspaceId, ownerWorkspace.id), eq(attachment.status, 'suggested')),
+        )
+        .groupBy(attachment.suggestedTransactionId),
+    ])
 
   const accountById = new Map(accounts.map((account) => [account.id, account]))
   const attachmentCountById = new Map(
     attachmentCounts
+      .filter((r) => r.transactionId !== null)
+      .map((r) => [r.transactionId as string, r.count]),
+  )
+  const suggestedAttachmentCountById = new Map(
+    suggestedAttachmentCounts
       .filter((r) => r.transactionId !== null)
       .map((r) => [r.transactionId as string, r.count]),
   )
@@ -192,6 +205,7 @@ export const getTransactions = createServerFn({ method: 'GET' }).handler(async (
         provider: transaction.provider,
         note: transaction.note,
         attachmentCount: attachmentCountById.get(transaction.id) ?? 0,
+        suggestedAttachmentCount: suggestedAttachmentCountById.get(transaction.id) ?? 0,
       }
     }),
     stats: {

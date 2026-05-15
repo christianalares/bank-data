@@ -6,12 +6,11 @@
   "scripts": {
     "dev": "pnpm dev:infra && pnpm dev:apps",
     "dev:apps": "turbo dev",
-    "dev:infra": "docker compose up -d postgres redis",
+    "dev:infra": "docker compose up -d postgres",
     "dev:web": "pnpm --filter @bank-data/web dev",
-    "dev:jobs": "pnpm --filter @bank-data/jobs-app dev",
+    "dev:jobs": "pnpm --filter @bank-data/jobs trigger:dev",
     "build": "turbo build",
     "start:web": "pnpm --filter @bank-data/web start",
-    "start:jobs": "pnpm --filter @bank-data/jobs-app start",
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "turbo lint",
@@ -34,6 +33,9 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "lightningcss"
-    ]
+    ],
+    "overrides": {
+      "@opentelemetry/api": "1.9.1"
+    }
   }
 }

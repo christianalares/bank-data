@@ -20,7 +20,13 @@ const config = defineConfig({
     // always undefined because tslib sets __esModule:true without a .default
     // export. Marking them external lets Node load them natively at runtime
     // via CJS, bypassing the interop entirely.
-    external: ['bullmq', 'ioredis', '@ioredis/commands', '@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
+    external: [
+      'bullmq',
+      'ioredis',
+      '@ioredis/commands',
+      '@aws-sdk/client-s3',
+      '@aws-sdk/s3-request-presigner',
+    ],
   },
   plugins: [
     devtools(),

@@ -1,0 +1,1 @@
+ALTER TABLE "attachment" ADD COLUMN "parsed_invoice" jsonb;

@@ -64,3 +64,21 @@ export const unlinkAttachment = () =>
         data: input,
       }),
   })
+
+export const approveSuggestedMatch = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'approveSuggestedMatch'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.approveSuggestedMatch>) =>
+      serverFns.banking.approveSuggestedMatch({
+        data: input,
+      }),
+  })
+
+export const dismissSuggestedMatch = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'dismissSuggestedMatch'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.dismissSuggestedMatch>) =>
+      serverFns.banking.dismissSuggestedMatch({
+        data: input,
+      }),
+  })

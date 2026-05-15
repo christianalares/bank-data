@@ -1,3 +1,4 @@
+import type { ParsedInvoice } from '@bank-data/db'
 import { FileIcon } from 'lucide-react'
 import type * as React from 'react'
 
@@ -10,11 +11,20 @@ export type InboxAttachment = {
   filename: string
   contentType: string
   sizeBytes: number
-  status: 'unmatched' | 'matched' | 'ignored'
+  status: 'unmatched' | 'suggested' | 'matched' | 'ignored'
   source: 'manual' | 'email'
   createdAt: string
   signedUrl: string
+  parsedInvoice: ParsedInvoice | null
   transaction: {
+    id: string
+    description: string
+    merchantName: string | null
+    amount: string
+    currency: string
+    bookedAt: string
+  } | null
+  suggestedTransaction: {
     id: string
     description: string
     merchantName: string | null
@@ -108,6 +118,16 @@ export function AttachmentCard({ attachment, onClick, onDelete, onUnlink }: Prop
         {isMatched && attachment.transaction ? (
           <p className="mt-1 truncate text-xs text-green-600 dark:text-green-400">
             {label} · {formatMoney(attachment.transaction.amount, attachment.transaction.currency)}
+          </p>
+        ) : attachment.status === 'suggested' && attachment.suggestedTransaction ? (
+          <p className="mt-1 truncate text-xs text-amber-600 dark:text-amber-400">
+            {attachment.suggestedTransaction.merchantName ??
+              attachment.suggestedTransaction.description}{' '}
+            ·{' '}
+            {formatMoney(
+              attachment.suggestedTransaction.amount,
+              attachment.suggestedTransaction.currency,
+            )}
           </p>
         ) : (
           <p className="mt-1 text-xs text-muted-foreground/60">Unmatched</p>

@@ -1,8 +1,10 @@
 import { createDb } from '@bank-data/db'
 import { attachment, bankTransaction } from '@bank-data/db/schema'
+import type { processAttachmentTask } from '@bank-data/jobs'
 import { createStorageClient } from '@bank-data/storage'
 import { createServerFn } from '@tanstack/react-start'
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
+import { tasks } from '@trigger.dev/sdk'
+import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 
 import { getOrCreateWorkspace, getServerSession } from '#/features/banking/shared'
 import { createShortId } from '#/lib/short-id'
@@ -72,6 +74,14 @@ export const uploadAttachments = createServerFn({ method: 'POST' })
         .returning()
 
       inserted.push(row)
+
+      if (!transactionId && file.type === 'application/pdf') {
+        await tasks.trigger<typeof processAttachmentTask>('process-attachment', {
+          attachmentStorageKey: key,
+          correlationId: row.id,
+          workspaceId: workspace.id,
+        })
+      }
     }
 
     return { uploaded: inserted.length }
@@ -101,7 +111,9 @@ export const getInboxAttachments = createServerFn({ method: 'GET' })
         status: attachment.status,
         source: attachment.source,
         s3Key: attachment.s3Key,
+        parsedInvoice: attachment.parsedInvoice,
         createdAt: attachment.createdAt,
+        suggestedTransactionId: attachment.suggestedTransactionId,
         transactionId: bankTransaction.id,
         transactionDescription: bankTransaction.description,
         transactionMerchantName: bankTransaction.merchantName,
@@ -113,6 +125,48 @@ export const getInboxAttachments = createServerFn({ method: 'GET' })
       .leftJoin(bankTransaction, eq(attachment.transactionId, bankTransaction.id))
       .where(and(eq(attachment.workspaceId, workspace.id), statusCondition))
       .orderBy(desc(attachment.createdAt))
+
+    // Batch-fetch suggested transactions in a single query to avoid N+1
+    const suggestedIds = [
+      ...new Set(
+        rows.map((r) => r.suggestedTransactionId).filter((id): id is string => id != null),
+      ),
+    ]
+    const suggestedTxMap = new Map<
+      string,
+      {
+        id: string
+        description: string
+        merchantName: string | null
+        amount: string
+        currency: string
+        bookedAt: string
+      }
+    >()
+    if (suggestedIds.length > 0) {
+      const suggestedRows = await db
+        .select({
+          id: bankTransaction.id,
+          description: bankTransaction.description,
+          merchantName: bankTransaction.merchantName,
+          amount: bankTransaction.amount,
+          currency: bankTransaction.currency,
+          bookedAt: bankTransaction.bookedAt,
+        })
+        .from(bankTransaction)
+        .where(inArray(bankTransaction.id, suggestedIds))
+
+      for (const t of suggestedRows) {
+        suggestedTxMap.set(t.id, {
+          id: t.id,
+          description: t.description,
+          merchantName: t.merchantName,
+          amount: t.amount,
+          currency: t.currency,
+          bookedAt: t.bookedAt.toISOString(),
+        })
+      }
+    }
 
     const result = await Promise.all(
       rows.map(async (row) => {
@@ -127,6 +181,7 @@ export const getInboxAttachments = createServerFn({ method: 'GET' })
           source: row.source,
           createdAt: row.createdAt.toISOString(),
           signedUrl,
+          parsedInvoice: row.parsedInvoice ?? null,
           transaction: row.transactionId
             ? {
                 id: row.transactionId,
@@ -136,6 +191,9 @@ export const getInboxAttachments = createServerFn({ method: 'GET' })
                 currency: row.transactionCurrency ?? '',
                 bookedAt: row.transactionBookedAt?.toISOString() ?? '',
               }
+            : null,
+          suggestedTransaction: row.suggestedTransactionId
+            ? (suggestedTxMap.get(row.suggestedTransactionId) ?? null)
             : null,
         }
       }),
@@ -153,7 +211,60 @@ export const linkAttachmentToTransaction = createServerFn({ method: 'POST' })
 
     const [updated] = await db
       .update(attachment)
-      .set({ transactionId: data.transactionId, status: 'matched' })
+      .set({ transactionId: data.transactionId, suggestedTransactionId: null, status: 'matched' })
+      .where(and(eq(attachment.id, data.attachmentId), eq(attachment.workspaceId, workspace.id)))
+      .returning()
+
+    if (!updated) {
+      throw new Error('Attachment not found')
+    }
+
+    return { ok: true }
+  })
+
+export const approveSuggestedMatch = createServerFn({ method: 'POST' })
+  .inputValidator((input: AttachmentIdInput) => input)
+  .handler(async ({ data }) => {
+    const session = await getServerSession()
+    const db = createDb()
+    const workspace = await getOrCreateWorkspace(session.user.id)
+
+    const row = await db.query.attachment.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.attachmentId), eq(table.workspaceId, workspace.id)),
+    })
+
+    if (!row?.suggestedTransactionId) {
+      throw new Error('No suggested match to approve')
+    }
+
+    const [updated] = await db
+      .update(attachment)
+      .set({
+        transactionId: row.suggestedTransactionId,
+        suggestedTransactionId: null,
+        status: 'matched',
+      })
+      .where(and(eq(attachment.id, data.attachmentId), eq(attachment.workspaceId, workspace.id)))
+      .returning()
+
+    if (!updated) {
+      throw new Error('Attachment not found')
+    }
+
+    return { ok: true }
+  })
+
+export const dismissSuggestedMatch = createServerFn({ method: 'POST' })
+  .inputValidator((input: AttachmentIdInput) => input)
+  .handler(async ({ data }) => {
+    const session = await getServerSession()
+    const db = createDb()
+    const workspace = await getOrCreateWorkspace(session.user.id)
+
+    const [updated] = await db
+      .update(attachment)
+      .set({ suggestedTransactionId: null, status: 'unmatched' })
       .where(and(eq(attachment.id, data.attachmentId), eq(attachment.workspaceId, workspace.id)))
       .returning()
 
@@ -194,6 +305,32 @@ export const getTransactionAttachments = createServerFn({ method: 'GET' })
     const rows = await db.query.attachment.findMany({
       where: (table, { eq, and }) =>
         and(eq(table.workspaceId, workspace.id), eq(table.transactionId, data.transactionId)),
+      orderBy: (table, { asc }) => [asc(table.createdAt)],
+    })
+
+    return rows.map((row) => ({
+      id: row.id,
+      filename: row.filename,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt.toISOString(),
+    }))
+  })
+
+export const getSuggestedAttachmentsForTransaction = createServerFn({ method: 'GET' })
+  .inputValidator((input: TransactionIdInput) => input)
+  .handler(async ({ data }) => {
+    const session = await getServerSession()
+    const db = createDb()
+    const workspace = await getOrCreateWorkspace(session.user.id)
+
+    const rows = await db.query.attachment.findMany({
+      where: (table, { eq, and }) =>
+        and(
+          eq(table.workspaceId, workspace.id),
+          eq(table.suggestedTransactionId, data.transactionId),
+          eq(table.status, 'suggested'),
+        ),
       orderBy: (table, { asc }) => [asc(table.createdAt)],
     })
 

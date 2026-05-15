@@ -12,9 +12,45 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { z } from 'zod'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Invoice parsing schema (shared between DB column typing and the jobs package)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const parsedInvoiceSchema = z.object({
+  vendorName: z.string().nullable().describe('Name of the vendor or supplier issuing the invoice'),
+  amount: z.string().nullable().describe('Total amount due as a decimal string, e.g. "1250.00"'),
+  currency: z.string().nullable().describe('ISO 4217 currency code, e.g. "SEK", "EUR", "USD"'),
+  invoiceDate: z
+    .string()
+    .nullable()
+    .describe('Invoice issue date in ISO 8601 format, e.g. "2024-03-15"'),
+  dueDate: z
+    .string()
+    .nullable()
+    .describe('Payment due date in ISO 8601 format, null if not present'),
+  invoiceNumber: z.string().nullable().describe('Invoice or receipt number/reference'),
+  lineItems: z
+    .array(
+      z.object({
+        description: z.string(),
+        amount: z.string().describe('Line item total as a decimal string'),
+      }),
+    )
+    .optional()
+    .describe('Individual line items if present on the invoice'),
+})
+
+export type ParsedInvoice = z.infer<typeof parsedInvoiceSchema>
 
 export const timeEntrySource = pgEnum('time_entry_source', ['manual', 'timer'])
-export const attachmentStatus = pgEnum('attachment_status', ['unmatched', 'matched', 'ignored'])
+export const attachmentStatus = pgEnum('attachment_status', [
+  'unmatched',
+  'suggested',
+  'matched',
+  'ignored',
+])
 export const attachmentSource = pgEnum('attachment_source', ['manual', 'email'])
 export const bankingConnectionProvider = pgEnum('banking_connection_provider', [
   'csv',
@@ -244,6 +280,10 @@ export const attachment = pgTable(
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
+    parsedInvoice: jsonb('parsed_invoice').$type<ParsedInvoice>(),
+    suggestedTransactionId: uuid('suggested_transaction_id').references(() => bankTransaction.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (table) => [
