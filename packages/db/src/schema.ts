@@ -26,7 +26,10 @@ export const parsedInvoiceSchema = z.object({
   invoiceDate: z
     .string()
     .nullable()
-    .describe('Invoice issue date in ISO 8601 format, e.g. "2024-03-15"'),
+    .describe(
+      'Invoice issue date or payment date in ISO 8601 format, e.g. "2024-03-15". ' +
+        'Look for any date field such as: "Invoice date", "Fakturadatum", "Betald den", "Paid on", "Payment date", "Issue date", "Date".',
+    ),
   dueDate: z
     .string()
     .nullable()
@@ -285,6 +288,7 @@ export const attachment = pgTable(
     suggestedTransactionId: uuid('suggested_transaction_id').references(() => bankTransaction.id, {
       onDelete: 'set null',
     }),
+    referenceId: text('reference_id').unique(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (table) => [
@@ -292,6 +296,23 @@ export const attachment = pgTable(
     index('attachment_transaction_idx').on(table.transactionId),
   ],
 )
+
+export const gmailConnection = pgTable('gmail_connection', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  email: text('email').notNull(),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token'),
+  expiresAt: timestamp('expires_at'),
+  lastSyncedAt: timestamp('last_synced_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+// Permanent record of every Gmail attachment that has been imported.
+// Survives attachment deletion so the same PDF is never re-imported.
+export const gmailImportedRef = pgTable('gmail_imported_ref', {
+  referenceId: text('reference_id').primaryKey(),
+  importedAt: timestamp('imported_at').notNull().defaultNow(),
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod schemas — runtime validation + source of truth for all row types

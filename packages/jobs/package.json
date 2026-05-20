@@ -19,6 +19,7 @@
     "@trigger.dev/sdk": "^4.4.6",
     "ai": "^6.0.182",
     "drizzle-orm": "^0.45.2",
+    "googleapis": "^171.4.0",
     "zod": "latest"
   },
   "devDependencies": {

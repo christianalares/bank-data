@@ -82,3 +82,15 @@ export const dismissSuggestedMatch = () =>
         data: input,
       }),
   })
+
+export const disconnectGmail = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'disconnectGmail'],
+    mutationFn: () => serverFns.banking.disconnectGmail({ data: undefined }),
+  })
+
+export const triggerGmailSync = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'triggerGmailSync'],
+    mutationFn: () => serverFns.banking.triggerGmailSync({ data: undefined }),
+  })

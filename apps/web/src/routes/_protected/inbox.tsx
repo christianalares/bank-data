@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
 import { pushAlert } from '#/components/alerts'
@@ -21,6 +21,7 @@ export const Route = createFileRoute('/_protected/inbox')({
       context.queryClient.ensureQueryData(queries.banking.inboxAttachments('all')),
       context.queryClient.ensureQueryData(queries.banking.inboxAttachments('matched')),
       context.queryClient.ensureQueryData(queries.banking.inboxAttachments('unmatched')),
+      context.queryClient.ensureQueryData(queries.banking.gmailConnection()),
     ])
   },
   component: InboxPage,
@@ -34,7 +35,6 @@ const ACCEPTED_TYPES = {
 type TabValue = 'all' | 'matched' | 'unmatched'
 
 function InboxPage() {
-  const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [activeTab, setActiveTab] = useState<TabValue>('unmatched')
@@ -42,11 +42,27 @@ function InboxPage() {
   const allQuery = useQuery(queries.banking.inboxAttachments('all'))
   const matchedQuery = useQuery(queries.banking.inboxAttachments('matched'))
   const unmatchedQuery = useQuery(queries.banking.inboxAttachments('unmatched'))
+  const gmailQuery = useQuery(queries.banking.gmailConnection())
+
+  // Show toast notifications based on OAuth redirect params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('gmailConnected') === '1') {
+      toast.success('Gmail connected — syncing PDFs now')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    if (params.get('gmailError')) {
+      toast.error(`Gmail error: ${params.get('gmailError')}`)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
 
   const uploadMutation = useMutation({
     ...mutations.banking.uploadAttachments(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['banking', 'inbox'] })
+    onSuccess: (_result, _variables, _context, context) => {
+      context.client.invalidateQueries(queries.banking.inboxAttachments('all'))
+      context.client.invalidateQueries(queries.banking.inboxAttachments('matched'))
+      context.client.invalidateQueries(queries.banking.inboxAttachments('unmatched'))
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Upload failed'
@@ -96,13 +112,38 @@ function InboxPage() {
 
   const unlinkMutation = useMutation({
     ...mutations.banking.unlinkAttachment(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['banking', 'inbox'] })
-      queryClient.invalidateQueries(queries.banking.transactions())
+    onSuccess: (_result, _variables, _context, context) => {
+      context.client.invalidateQueries(queries.banking.inboxAttachments('all'))
+      context.client.invalidateQueries(queries.banking.inboxAttachments('matched'))
+      context.client.invalidateQueries(queries.banking.inboxAttachments('unmatched'))
+      context.client.invalidateQueries(queries.banking.transactions())
       toast.success('Attachment unlinked')
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Could not unlink attachment'
+      toast.error(message)
+    },
+  })
+
+  const disconnectGmailMutation = useMutation({
+    ...mutations.banking.disconnectGmail(),
+    onSuccess: (_result, _variables, _context, context) => {
+      context.client.invalidateQueries(queries.banking.gmailConnection())
+      toast.success('Gmail disconnected')
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not disconnect Gmail'
+      toast.error(message)
+    },
+  })
+
+  const syncGmailMutation = useMutation({
+    ...mutations.banking.triggerGmailSync(),
+    onSuccess: () => {
+      toast.success('Gmail sync triggered — PDFs will appear shortly')
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not trigger Gmail sync'
       toast.error(message)
     },
   })
@@ -155,6 +196,42 @@ function InboxPage() {
             className="hidden"
             onChange={handleFileInputChange}
           />
+
+          {gmailQuery.data ? (
+            <>
+              <div className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs text-muted-foreground">
+                <Icon name="mail" className="size-3.5 text-green-500" />
+                <span>{gmailQuery.data.email}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-muted-foreground"
+                onClick={() => syncGmailMutation.mutate()}
+                disabled={syncGmailMutation.isPending}
+              >
+                <Icon name="refreshCw" className="mr-1 size-3" />
+                Sync
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-muted-foreground"
+                onClick={() => disconnectGmailMutation.mutate()}
+                disabled={disconnectGmailMutation.isPending}
+              >
+                Disconnect
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" asChild>
+              <a href="/api/gmail/connect">
+                <Icon name="mail" className="mr-1.5 size-3.5" />
+                Connect Gmail
+              </a>
+            </Button>
+          )}
+
           <Button size="sm" variant="outline" onClick={handleUploadButtonClick}>
             <Icon name="upload" className="mr-1.5 size-3.5" />
             Upload

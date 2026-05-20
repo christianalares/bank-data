@@ -11,6 +11,11 @@ export {
   uploadAttachments,
 } from '#/features/banking/attachments-server'
 export {
+  disconnectGmail,
+  getGmailConnection,
+  triggerGmailSync,
+} from '#/features/banking/gmail-server'
+export {
   completeEnableBankingAuthorization,
   getTransactions,
   importTransactionsCsv,

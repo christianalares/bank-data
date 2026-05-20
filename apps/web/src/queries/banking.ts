@@ -2,6 +2,13 @@ import { queryOptions } from '@tanstack/react-query'
 
 import { serverFns } from '#/server-fns'
 
+export const gmailConnection = () =>
+  queryOptions({
+    queryKey: ['banking', 'gmail-connection'],
+    queryFn: () => serverFns.banking.getGmailConnection(),
+    staleTime: 1000 * 60,
+  })
+
 export const transactions = () =>
   queryOptions({
     queryKey: ['banking', 'transactions'],

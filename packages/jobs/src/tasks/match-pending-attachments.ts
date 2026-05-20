@@ -25,6 +25,7 @@ const matchResultSchema = z.object({
 export const matchPendingAttachmentsTask = schemaTask({
   id: 'match-pending-attachments',
   schema: payloadSchema,
+  queue: { concurrencyLimit: 1 },
   run: async (payload) => {
     const db = createDb()
 
@@ -47,16 +48,26 @@ export const matchPendingAttachmentsTask = schemaTask({
     for (const att of pendingAttachments) {
       const invoiceDateStr = att.parsedInvoice?.invoiceDate ?? att.parsedInvoice?.dueDate
 
-      if (!invoiceDateStr) {
-        logger.info('Skipping attachment with no invoice date', { attachmentId: att.id })
-        continue
+      // Fall back to the attachment's import date — the email arrived around the
+      // same time as the purchase, so it's a reasonable approximation
+      const isFallbackDate = !invoiceDateStr
+      const invoiceDate = invoiceDateStr ? new Date(invoiceDateStr) : new Date(att.createdAt)
+
+      if (isFallbackDate) {
+        logger.info('No invoice date found — falling back to attachment createdAt', {
+          attachmentId: att.id,
+          fallbackDate: invoiceDate.toISOString(),
+        })
       }
 
-      const invoiceDate = new Date(invoiceDateStr)
+      // Use a wider window for fallback dates since the estimate is less precise
+      const lookbackDays = isFallbackDate ? 30 : 15
+      const lookforwardDays = isFallbackDate ? 5 : 5
+
       const from = new Date(invoiceDate)
-      from.setDate(from.getDate() - 15)
+      from.setDate(from.getDate() - lookbackDays)
       const to = new Date(invoiceDate)
-      to.setDate(to.getDate() + 5)
+      to.setDate(to.getDate() + lookforwardDays)
 
       const candidates = await db
         .select({
@@ -94,7 +105,7 @@ export const matchPendingAttachmentsTask = schemaTask({
       }))
 
       const { output } = await generateText({
-        model: mistral('mistral-large-latest'),
+        model: mistral('mistral-small-latest'),
         output: Output.object({ schema: matchResultSchema }),
         prompt: `You are matching an invoice or receipt to a bank transaction.
 

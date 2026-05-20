@@ -20,6 +20,7 @@ export type ProcessAttachmentPayload = z.infer<typeof payloadSchema>
 export const processAttachmentTask = schemaTask({
   id: 'process-attachment',
   schema: payloadSchema,
+  queue: { concurrencyLimit: 1 },
   retry: {
     maxAttempts: 6,
     minTimeoutInMs: 10_000,
@@ -44,39 +45,61 @@ export const processAttachmentTask = schemaTask({
       ? ({ type: 'image' as const, image: fileBytes, mediaType: payload.contentType } as const)
       : ({ type: 'file' as const, data: fileBytes, mediaType: 'application/pdf' as const } as const)
 
-    const { text: extractedText } = await generateText({
-      model: mistral(isImage ? 'pixtral-12b-latest' : 'mistral-small-latest'),
-      maxRetries: 0,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'Extract all text content from this document. Preserve numbers, dates, and amounts exactly as they appear.',
-            },
-            fileContentPart,
-          ],
-        },
-      ],
-      ...(!isImage && {
-        providerOptions: {
-          mistral: {
-            documentImageLimit: 8,
-            documentPageLimit: 64,
-          } satisfies MistralLanguageModelOptions,
-        },
-      }),
-    })
+    let parsedInvoice = null
 
-    logger.info('Structuring extracted text', { chars: extractedText.length })
+    try {
+      const { text: extractedText } = await generateText({
+        model: mistral(isImage ? 'pixtral-12b-latest' : 'mistral-small-latest'),
+        maxRetries: 5,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Extract all text content from this document. Preserve numbers, dates, and amounts exactly as they appear.',
+              },
+              fileContentPart,
+            ],
+          },
+        ],
+        ...(!isImage && {
+          providerOptions: {
+            mistral: {
+              documentImageLimit: 8,
+              // Most invoices are 1-3 pages; limit prevents huge bank statements
+              // from blowing the context window
+              documentPageLimit: 10,
+            } satisfies MistralLanguageModelOptions,
+          },
+        }),
+      })
 
-    const { output: parsedInvoice } = await generateText({
-      model: mistral('mistral-large-latest'),
-      maxRetries: 0,
-      output: Output.object({ schema: parsedInvoiceSchema }),
-      prompt: `Extract the invoice or receipt data from the following document text. Return null for any field that is not present or cannot be determined with confidence.\n\n${extractedText}`,
-    })
+      logger.info('Structuring extracted text', { chars: extractedText.length })
+
+      const { output } = await generateText({
+        model: mistral('mistral-small-latest'),
+        maxRetries: 5,
+        output: Output.object({ schema: parsedInvoiceSchema }),
+        prompt: `Extract the invoice or receipt data from the following document text. Return null for any field that is not present or cannot be determined with confidence.\n\n${extractedText}`,
+      })
+
+      parsedInvoice = output ?? null
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const isContextLengthError =
+        message.includes('too large for model') || message.includes('maximum context length')
+
+      if (isContextLengthError) {
+        logger.warn('Document too large for AI extraction — storing without parsed data', {
+          correlationId: payload.correlationId,
+          bytes: fileBytes.byteLength,
+        })
+      } else {
+        // Re-throw anything that isn't a context length error so Trigger retries it
+        throw err
+      }
+    }
 
     logger.info('Storing parsed invoice on attachment', {
       correlationId: payload.correlationId,

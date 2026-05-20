@@ -18,6 +18,8 @@ import { Route as ProtectedSettingsRouteImport } from './routes/_protected/setti
 import { Route as ProtectedJobsRouteImport } from './routes/_protected/jobs'
 import { Route as ProtectedInboxRouteImport } from './routes/_protected/inbox'
 import { Route as ProtectedExportsRouteImport } from './routes/_protected/exports'
+import { Route as ApiGmailConnectRouteImport } from './routes/api/gmail/connect'
+import { Route as ApiGmailCallbackRouteImport } from './routes/api/gmail/callback'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBankingEnableBankingCallbackRouteImport } from './routes/api/banking/enable-banking/callback'
 
@@ -65,6 +67,16 @@ const ProtectedExportsRoute = ProtectedExportsRouteImport.update({
   path: '/exports',
   getParentRoute: () => ProtectedRoute,
 } as any)
+const ApiGmailConnectRoute = ApiGmailConnectRouteImport.update({
+  id: '/api/gmail/connect',
+  path: '/api/gmail/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGmailCallbackRoute = ApiGmailCallbackRouteImport.update({
+  id: '/api/gmail/callback',
+  path: '/api/gmail/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -87,6 +99,8 @@ export interface FileRoutesByFullPath {
   '/tracker': typeof ProtectedTrackerRoute
   '/transactions': typeof ProtectedTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/gmail/callback': typeof ApiGmailCallbackRoute
+  '/api/gmail/connect': typeof ApiGmailConnectRoute
   '/api/banking/enable-banking/callback': typeof ApiBankingEnableBankingCallbackRoute
 }
 export interface FileRoutesByTo {
@@ -99,6 +113,8 @@ export interface FileRoutesByTo {
   '/transactions': typeof ProtectedTransactionsRoute
   '/': typeof ProtectedIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/gmail/callback': typeof ApiGmailCallbackRoute
+  '/api/gmail/connect': typeof ApiGmailConnectRoute
   '/api/banking/enable-banking/callback': typeof ApiBankingEnableBankingCallbackRoute
 }
 export interface FileRoutesById {
@@ -113,6 +129,8 @@ export interface FileRoutesById {
   '/_protected/transactions': typeof ProtectedTransactionsRoute
   '/_protected/': typeof ProtectedIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/gmail/callback': typeof ApiGmailCallbackRoute
+  '/api/gmail/connect': typeof ApiGmailConnectRoute
   '/api/banking/enable-banking/callback': typeof ApiBankingEnableBankingCallbackRoute
 }
 export interface FileRouteTypes {
@@ -127,6 +145,8 @@ export interface FileRouteTypes {
     | '/tracker'
     | '/transactions'
     | '/api/auth/$'
+    | '/api/gmail/callback'
+    | '/api/gmail/connect'
     | '/api/banking/enable-banking/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -139,6 +159,8 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/'
     | '/api/auth/$'
+    | '/api/gmail/callback'
+    | '/api/gmail/connect'
     | '/api/banking/enable-banking/callback'
   id:
     | '__root__'
@@ -152,6 +174,8 @@ export interface FileRouteTypes {
     | '/_protected/transactions'
     | '/_protected/'
     | '/api/auth/$'
+    | '/api/gmail/callback'
+    | '/api/gmail/connect'
     | '/api/banking/enable-banking/callback'
   fileRoutesById: FileRoutesById
 }
@@ -159,6 +183,8 @@ export interface RootRouteChildren {
   ProtectedRoute: typeof ProtectedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiGmailCallbackRoute: typeof ApiGmailCallbackRoute
+  ApiGmailConnectRoute: typeof ApiGmailConnectRoute
   ApiBankingEnableBankingCallbackRoute: typeof ApiBankingEnableBankingCallbackRoute
 }
 
@@ -227,6 +253,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedExportsRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/api/gmail/connect': {
+      id: '/api/gmail/connect'
+      path: '/api/gmail/connect'
+      fullPath: '/api/gmail/connect'
+      preLoaderRoute: typeof ApiGmailConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/gmail/callback': {
+      id: '/api/gmail/callback'
+      path: '/api/gmail/callback'
+      fullPath: '/api/gmail/callback'
+      preLoaderRoute: typeof ApiGmailCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -272,6 +312,8 @@ const rootRouteChildren: RootRouteChildren = {
   ProtectedRoute: ProtectedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiGmailCallbackRoute: ApiGmailCallbackRoute,
+  ApiGmailConnectRoute: ApiGmailConnectRoute,
   ApiBankingEnableBankingCallbackRoute: ApiBankingEnableBankingCallbackRoute,
 }
 export const routeTree = rootRouteImport
