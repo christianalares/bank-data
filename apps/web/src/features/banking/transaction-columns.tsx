@@ -145,4 +145,19 @@ export const transactionColumns: ColumnDef<TransactionRow>[] = [
     },
     meta: { className: 'whitespace-nowrap' },
   },
+  {
+    id: 'note',
+    minSize: 120,
+    header: 'Note',
+    accessorFn: (row) => row.note,
+    cell: ({ row }) => {
+      const note = row.original.note
+
+      if (!note) {
+        return <span className="text-muted-foreground">—</span>
+      }
+
+      return <span>{note}</span>
+    },
+  },
 ]

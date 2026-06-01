@@ -36,6 +36,7 @@ type CsvRow = Record<string, string>
 
 type NormalizedTransaction = {
   providerTransactionId: string
+  status: 'booked' | 'pending'
   bookedAt: Date
   valueAt: Date | null
   amount: string
@@ -444,7 +445,7 @@ async function syncEnableBankingConnection({
             accountUid,
             transaction.providerTransactionId,
           ),
-          status: transaction.valueAt ? 'booked' : 'pending',
+          status: transaction.status,
           bookedAt: transaction.bookedAt,
           valueAt: transaction.valueAt,
           amount: transaction.amount,
@@ -462,7 +463,7 @@ async function syncEnableBankingConnection({
           set: {
             accountId: account.id,
             connectionId,
-            status: transaction.valueAt ? 'booked' : 'pending',
+            status: transaction.status,
             bookedAt: transaction.bookedAt,
             valueAt: transaction.valueAt,
             amount: transaction.amount,
@@ -638,6 +639,7 @@ async function getEnableBankingAccountTransactions(accountId: string) {
     const params = new URLSearchParams({
       date_from: dateFrom,
       strategy: 'default',
+      transaction_status: 'BOOK',
     })
 
     if (continuationKey) {
@@ -799,6 +801,7 @@ function normalizeEnableBankingTransaction(
       description,
       balanceAfterTransaction,
     }),
+    status: transaction.status === 'PDNG' ? 'pending' : 'booked',
     bookedAt,
     valueAt,
     amount: signedAmount,
@@ -820,12 +823,16 @@ function normalizeEnableBankingAmount(
   }
 
   const parsedAmount = Number(amount)
+  const magnitude = Math.abs(parsedAmount)
 
-  if (indicator === 'DBIT' && parsedAmount > 0) {
-    return (-parsedAmount).toFixed(2)
+  // Enable Banking reports amounts as positive magnitudes with a separate
+  // credit/debit indicator. Treat anything that isn't an explicit credit as a
+  // debit (money out) so a missing indicator can't masquerade as income.
+  if (indicator === 'CRDT') {
+    return magnitude.toFixed(2)
   }
 
-  return parsedAmount.toFixed(2)
+  return (-magnitude).toFixed(2)
 }
 
 function getEnableBankingTransactionDescription(transaction: EnableBankingTransaction) {
@@ -1015,6 +1022,7 @@ function normalizeCsvTransaction(
       description,
       balanceAfterTransaction,
     }),
+    status: 'booked',
     bookedAt: parseDate(date),
     valueAt: parseDate(date),
     amount,
