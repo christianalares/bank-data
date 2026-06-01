@@ -11,6 +11,15 @@ export const importTransactionsCsv = () =>
       }),
   })
 
+export const exportTransactions = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'exportTransactions'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.exportTransactions>) =>
+      serverFns.banking.exportTransactions({
+        data: input,
+      }),
+  })
+
 export const startEnableBankingAuthorization = () =>
   mutationOptions({
     mutationKey: ['banking', 'startEnableBankingAuthorization'],

@@ -170,7 +170,7 @@ function InboxPage() {
   }
 
   return (
-    <div {...getRootProps()} className="relative flex h-full flex-col outline-none">
+    <div {...getRootProps()} className="relative flex flex-col outline-none">
       <input {...getInputProps()} />
 
       {isDragActive ? (
@@ -182,12 +182,8 @@ function InboxPage() {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between border-b px-6 py-4">
-        <div className="flex items-center gap-3">
-          <Icon name="inbox" className="size-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Inbox</h1>
-        </div>
-        <div className="flex items-center gap-2">
+      <div>
+        <div className="mb-4 flex items-center gap-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -196,6 +192,8 @@ function InboxPage() {
             className="hidden"
             onChange={handleFileInputChange}
           />
+
+          <div className="flex-1" />
 
           {gmailQuery.data ? (
             <>
@@ -237,9 +235,7 @@ function InboxPage() {
             Upload
           </Button>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
           <TabsList>
             <TabsTrigger value="all">

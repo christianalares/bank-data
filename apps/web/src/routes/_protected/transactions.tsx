@@ -11,6 +11,7 @@ import { DataTable } from '#/components/ui/data-table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '#/components/ui/empty'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { MonthPicker } from '#/components/ui/month-picker'
 import { getTransactionColumnSizing } from '#/features/banking/column-sizing'
 import type { TransactionRow } from '#/features/banking/transaction-columns'
 import { useTransactionsTable } from '#/features/banking/use-transactions-table'
@@ -111,14 +112,46 @@ function TransactionsPage() {
   )
 }
 
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 function TransactionsTable({ transactions }: { transactions: TransactionRow[] }) {
   const { columnSizing } = Route.useLoaderData()
-  const table = useTransactionsTable({ transactions, initialColumnSizing: columnSizing })
+  const { table, search, setSearch, month, setMonth } = useTransactionsTable({
+    transactions,
+    initialColumnSizing: columnSizing,
+  })
   const selectedRows = table.getSelectedRowModel().rows
   const hasSelection = selectedRows.length > 0
+  const exportMutation = useMutation(mutations.banking.exportTransactions())
 
   function handleExport() {
-    console.log('export')
+    const transactionIds = selectedRows.map((row) => row.original.id)
+
+    if (transactionIds.length === 0) {
+      return
+    }
+
+    const promise = exportMutation.mutateAsync({ transactionIds }).then(async (response) => {
+      const blob = await response.blob()
+      const filename = response.headers.get('X-Export-Filename') ?? 'transactions-export.zip'
+      triggerBlobDownload(blob, filename)
+      return transactionIds.length
+    })
+
+    toast.promise(promise, {
+      loading: 'Exporting…',
+      success: (count) => `Exported ${count} transaction${count === 1 ? '' : 's'}`,
+      error: (error) => (error instanceof Error ? error.message : 'Export failed'),
+    })
   }
 
   function handleRowClick(transaction: TransactionRow) {
@@ -128,14 +161,25 @@ function TransactionsTable({ transactions }: { transactions: TransactionRow[] })
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Input className="h-8 w-56" placeholder="Search…" />
+        <Input
+          className="h-8 w-56"
+          placeholder="Search…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <MonthPicker value={month} onChange={setMonth} />
         {hasSelection && (
           <span className="text-xs text-muted-foreground">{selectedRows.length} selected</span>
         )}
         <div className="flex-1" />
         {hasSelection && (
-          <Button size="sm" variant="outline" onClick={handleExport}>
-            Export
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExport}
+            disabled={exportMutation.isPending}
+          >
+            {exportMutation.isPending ? 'Exporting…' : 'Export'}
           </Button>
         )}
       </div>

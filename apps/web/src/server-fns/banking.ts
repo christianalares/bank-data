@@ -10,6 +10,7 @@ export {
   unlinkAttachment,
   uploadAttachments,
 } from '#/features/banking/attachments-server'
+export { exportTransactions } from '#/features/banking/export-server'
 export {
   disconnectGmail,
   getGmailConnection,
