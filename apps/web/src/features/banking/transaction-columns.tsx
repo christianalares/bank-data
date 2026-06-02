@@ -86,9 +86,9 @@ export const transactionColumns: ColumnDef<TransactionRow>[] = [
       const subtitle = row.original.merchantName ?? row.original.counterpartyName
 
       return (
-        <div className="flex flex-col">
-          <span className="font-medium">{row.original.description}</span>
-          {subtitle ? <span className="text-muted-foreground">{subtitle}</span> : null}
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{row.original.description}</span>
+          {subtitle ? <span className="truncate text-muted-foreground">{subtitle}</span> : null}
         </div>
       )
     },
@@ -126,7 +126,6 @@ export const transactionColumns: ColumnDef<TransactionRow>[] = [
   {
     id: 'attachmentStatus',
     minSize: 80,
-    enableResizing: false,
     header: 'Status',
     accessorFn: (row) => row.attachmentCount,
     cell: ({ row }) => {

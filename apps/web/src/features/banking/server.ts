@@ -425,12 +425,21 @@ async function syncEnableBankingConnection({
       })
       .returning()
 
-    for (const transaction of transactions.map((item) =>
+    // Skip reserved/pending authorizations (the bank's "reserverat belopp").
+    // They are transient duplicates with an unreliable sign and no running
+    // balance; the settled BOOK entry arrives later with correct data. We
+    // filter here rather than trusting the API's transaction_status param,
+    // since some ASPSPs return pending entries regardless.
+    const bookedTransactions = transactions.filter((item) => item.status !== 'PDNG')
+
+    const normalizedTransactions = bookedTransactions.map((item) =>
       normalizeEnableBankingTransaction(item, {
         accountId: accountUid,
         fallbackCurrency: account.currency,
       }),
-    )) {
+    )
+
+    for (const transaction of normalizedTransactions) {
       await db
         .insert(bankTransaction)
         .values({

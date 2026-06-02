@@ -42,7 +42,6 @@ export function MonthPicker({ value, onChange, placeholder = 'All months', class
         <PopoverTrigger asChild>
           <Button
             variant="outline"
-            size="sm"
             className={cn('justify-start font-normal', !value && 'text-muted-foreground')}
           >
             <CalendarIcon data-icon="inline-start" />

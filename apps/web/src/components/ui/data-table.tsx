@@ -83,9 +83,11 @@ export function DataTable<T>({ table, onRowClick, className }: Props<T>) {
                     isLast ? undefined : { width: `calc(var(--header-${header.id}-size) * 1px)` }
                   }
                 >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
+                  {header.isPlaceholder ? null : (
+                    <span className="block truncate">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </span>
+                  )}
                   {header.column.getCanResize() && (
                     <button
                       type="button"
@@ -125,7 +127,10 @@ export function DataTable<T>({ table, onRowClick, className }: Props<T>) {
               return (
                 <TableCell
                   key={cell.id}
-                  className={cn(cell.column.columnDef.meta?.className)}
+                  className={cn(
+                    'overflow-hidden text-ellipsis',
+                    cell.column.columnDef.meta?.className,
+                  )}
                   style={
                     isLast ? undefined : { width: `calc(var(--col-${cell.column.id}-size) * 1px)` }
                   }

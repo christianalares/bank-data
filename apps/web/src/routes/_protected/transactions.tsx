@@ -162,7 +162,7 @@ function TransactionsTable({ transactions }: { transactions: TransactionRow[] })
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <Input
-          className="h-8 w-56"
+          className="w-56"
           placeholder="Search…"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
