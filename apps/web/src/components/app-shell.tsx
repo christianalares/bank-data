@@ -2,6 +2,7 @@ import { Outlet, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
 import { AppSidebar } from '#/components/layout/app-sidebar'
+import { ModeToggle } from '#/components/mode-toggle'
 import { Separator } from '#/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '#/components/ui/sidebar'
 import { TooltipProvider } from '#/components/ui/tooltip'
@@ -31,6 +32,9 @@ export function AppShell({ children }: { children?: ReactNode }) {
               className="mr-2 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
             />
             <p className="text-sm font-medium">{pageTitle}</p>
+            <div className="ml-auto flex items-center gap-2">
+              <ModeToggle />
+            </div>
           </header>
           <main className="flex flex-1 flex-col overflow-y-auto">
             <div className="flex w-full flex-col gap-6 px-6 py-8">{children ?? <Outlet />}</div>
