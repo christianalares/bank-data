@@ -1,0 +1,31 @@
+name: Deploy to Trigger.dev (prod)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TRIGGER_PROJECT_REF: ${{ secrets.TRIGGER_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Deploy Trigger.dev
+        if: env.TRIGGER_PROJECT_REF != ''
+        working-directory: packages/jobs
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: pnpm exec trigger deploy
