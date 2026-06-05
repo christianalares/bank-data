@@ -48,16 +48,19 @@ export const processAttachmentTask = schemaTask({
     let parsedInvoice = null
 
     try {
-      const { text: extractedText } = await generateText({
+      // Single call: read the document and emit the structured invoice directly,
+      // rather than a separate OCR-to-text pass followed by a structuring pass.
+      const { output } = await generateText({
         model: mistral(isImage ? 'pixtral-12b-latest' : 'mistral-small-latest'),
         maxRetries: 5,
+        output: Output.object({ schema: parsedInvoiceSchema }),
         messages: [
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: 'Extract all text content from this document. Preserve numbers, dates, and amounts exactly as they appear.',
+                text: 'Extract the invoice or receipt data from this document. Preserve numbers, dates, and amounts exactly as they appear. Return null for any field that is not present or cannot be determined with confidence.',
               },
               fileContentPart,
             ],
@@ -73,15 +76,6 @@ export const processAttachmentTask = schemaTask({
             } satisfies MistralLanguageModelOptions,
           },
         }),
-      })
-
-      logger.info('Structuring extracted text', { chars: extractedText.length })
-
-      const { output } = await generateText({
-        model: mistral('mistral-small-latest'),
-        maxRetries: 5,
-        output: Output.object({ schema: parsedInvoiceSchema }),
-        prompt: `Extract the invoice or receipt data from the following document text. Return null for any field that is not present or cannot be determined with confidence.\n\n${extractedText}`,
       })
 
       parsedInvoice = output ?? null
