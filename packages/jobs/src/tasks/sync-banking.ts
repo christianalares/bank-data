@@ -79,6 +79,7 @@ type EnableBankingTransaction = {
 
 type NormalizedTransaction = {
   providerTransactionId: string
+  status: 'booked' | 'pending'
   bookedAt: Date
   valueAt: Date | null
   amount: string
@@ -231,7 +232,11 @@ async function syncEnableBankingConnection({
       })
       .returning()
 
-    for (const transaction of transactions.map((item) =>
+    // Belt-and-suspenders: some ASPSPs return pending entries even when we ask
+    // for BOOK only. Drop them so reserved authorizations are never stored.
+    const bookedTransactions = transactions.filter((item) => item.status !== 'PDNG')
+
+    for (const transaction of bookedTransactions.map((item) =>
       normalizeEnableBankingTransaction(item, {
         accountId: accountUid,
         fallbackCurrency: account.currency,
@@ -289,7 +294,7 @@ async function upsertBankTransaction({
         providerAccountId,
         transaction.providerTransactionId,
       ),
-      status: transaction.valueAt ? 'booked' : 'pending',
+      status: transaction.status,
       bookedAt: transaction.bookedAt,
       valueAt: transaction.valueAt,
       amount: transaction.amount,
@@ -307,7 +312,7 @@ async function upsertBankTransaction({
       set: {
         accountId,
         connectionId,
-        status: transaction.valueAt ? 'booked' : 'pending',
+        status: transaction.status,
         bookedAt: transaction.bookedAt,
         valueAt: transaction.valueAt,
         amount: transaction.amount,
@@ -354,7 +359,14 @@ async function getEnableBankingAccountTransactions(
   let continuationKey: string | undefined
 
   do {
-    const params = new URLSearchParams({ date_from: options.dateFrom, strategy: 'default' })
+    const params = new URLSearchParams({
+      date_from: options.dateFrom,
+      strategy: 'default',
+      // Only settled transactions. Pending/reserved authorizations have an
+      // unreliable sign and are transient duplicates of the BOOK entry that
+      // settles later.
+      transaction_status: 'BOOK',
+    })
 
     if (continuationKey) {
       params.set('continuation_key', continuationKey)
@@ -509,6 +521,7 @@ function normalizeEnableBankingTransaction(
       description,
       balanceAfterTransaction,
     }),
+    status: transaction.status === 'PDNG' ? 'pending' : 'booked',
     bookedAt,
     valueAt,
     amount: signedAmount,
@@ -529,13 +542,16 @@ function normalizeEnableBankingAmount(
     return null
   }
 
-  const parsedAmount = Number(amount)
+  const magnitude = Math.abs(Number(amount))
 
-  if (indicator === 'DBIT' && parsedAmount > 0) {
-    return (-parsedAmount).toFixed(2)
+  // Enable Banking reports positive magnitudes with a separate credit/debit
+  // indicator. Treat anything that isn't an explicit credit as a debit (money
+  // out) so a missing indicator can't masquerade as income.
+  if (indicator === 'CRDT') {
+    return magnitude.toFixed(2)
   }
 
-  return parsedAmount.toFixed(2)
+  return (-magnitude).toFixed(2)
 }
 
 function getEnableBankingTransactionDescription(transaction: EnableBankingTransaction) {
