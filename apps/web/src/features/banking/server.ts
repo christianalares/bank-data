@@ -1,5 +1,16 @@
-import { createHash, randomUUID, sign } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
+import {
+  createEnableBankingInternalId,
+  type EnableBankingAccount,
+  enableBankingRequest,
+  getEnableBankingAccountBalances,
+  getEnableBankingAccountDetails,
+  getEnableBankingAccountName,
+  getEnableBankingTransactions,
+  normalizeEnableBankingTransaction,
+  pickEnableBankingBalance,
+} from '@bank-data/banking'
 import {
   attachment,
   bankAccount,
@@ -46,60 +57,6 @@ type NormalizedTransaction = {
   counterpartyName: string | null
   balanceAfterTransaction: string | null
   rawMetadata: unknown
-}
-
-type EnableBankingAccount = {
-  uid?: string
-  identification_hash?: string
-  account_id?: {
-    iban?: string
-    other?: {
-      identification?: string
-      scheme_name?: string
-    }
-  }
-  name?: string
-  details?: string
-  currency?: string
-  cash_account_type?: string
-}
-
-type EnableBankingBalance = {
-  balance_amount?: {
-    currency?: string
-    amount?: string
-  }
-  balance_type?: string
-}
-
-type EnableBankingTransaction = {
-  entry_reference?: string
-  transaction_id?: string
-  transaction_amount?: {
-    currency?: string
-    amount?: string
-  }
-  credit_debit_indicator?: 'CRDT' | 'DBIT'
-  status?: 'BOOK' | 'PDNG'
-  booking_date?: string
-  value_date?: string
-  transaction_date?: string
-  balance_after_transaction?: {
-    currency?: string
-    amount?: string
-  }
-  remittance_information?: string[]
-  note?: string
-  reference_number?: string
-  bank_transaction_code?: {
-    description?: string
-  }
-  creditor?: {
-    name?: string
-  }
-  debtor?: {
-    name?: string
-  }
 }
 
 type UpdateTransactionNoteInput = {
@@ -381,13 +338,15 @@ async function syncEnableBankingConnection({
     const [details, balances, transactions] = await Promise.all([
       getEnableBankingAccountDetails(accountUid).catch(() => enableBankingAccount),
       getEnableBankingAccountBalances(accountUid).catch(() => []),
-      getEnableBankingAccountTransactions(accountUid),
+      getEnableBankingTransactions(accountUid, {
+        dateFrom: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      }),
     ])
     const accountDetails = {
       ...enableBankingAccount,
       ...details,
     }
-    const balance = pickBalance(balances)
+    const balance = pickEnableBankingBalance(balances)
     const [account] = await db
       .insert(bankAccount)
       .values({
@@ -425,14 +384,7 @@ async function syncEnableBankingConnection({
       })
       .returning()
 
-    // Skip reserved/pending authorizations (the bank's "reserverat belopp").
-    // They are transient duplicates with an unreliable sign and no running
-    // balance; the settled BOOK entry arrives later with correct data. We
-    // filter here rather than trusting the API's transaction_status param,
-    // since some ASPSPs return pending entries regardless.
-    const bookedTransactions = transactions.filter((item) => item.status !== 'PDNG')
-
-    const normalizedTransactions = bookedTransactions.map((item) =>
+    const normalizedTransactions = transactions.map((item) =>
       normalizeEnableBankingTransaction(item, {
         accountId: accountUid,
         fallbackCurrency: account.currency,
@@ -448,8 +400,7 @@ async function syncEnableBankingConnection({
           accountId: account.id,
           provider: 'enable_banking',
           providerTransactionId: transaction.providerTransactionId,
-          internalId: createInternalId(
-            'enable_banking',
+          internalId: createEnableBankingInternalId(
             workspaceId,
             accountUid,
             transaction.providerTransactionId,
@@ -625,103 +576,6 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
     }
   })
 
-async function getEnableBankingAccountDetails(accountId: string) {
-  return enableBankingRequest<EnableBankingAccount>(
-    `/accounts/${encodeURIComponent(accountId)}/details`,
-  )
-}
-
-async function getEnableBankingAccountBalances(accountId: string) {
-  const response = await enableBankingRequest<{
-    balances?: EnableBankingBalance[]
-  }>(`/accounts/${encodeURIComponent(accountId)}/balances`)
-
-  return response.balances ?? []
-}
-
-async function getEnableBankingAccountTransactions(accountId: string) {
-  const transactions: EnableBankingTransaction[] = []
-  let continuationKey: string | undefined
-  const dateFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-
-  do {
-    const params = new URLSearchParams({
-      date_from: dateFrom,
-      strategy: 'default',
-      transaction_status: 'BOOK',
-    })
-
-    if (continuationKey) {
-      params.set('continuation_key', continuationKey)
-    }
-
-    const response = await enableBankingRequest<{
-      transactions?: EnableBankingTransaction[]
-      continuation_key?: string
-    }>(`/accounts/${encodeURIComponent(accountId)}/transactions?${params.toString()}`)
-
-    transactions.push(...(response.transactions ?? []))
-    continuationKey = response.continuation_key
-  } while (continuationKey)
-
-  return transactions
-}
-
-async function enableBankingRequest<TResponse>(
-  path: string,
-  options: {
-    method?: 'GET' | 'POST'
-    body?: unknown
-  } = {},
-) {
-  const response = await fetch(`https://api.enablebanking.com${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${createEnableBankingJwt()}`,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  })
-
-  if (!response.ok) {
-    const responseText = await response.text()
-    throw new Error(`Enable Banking request failed (${response.status}): ${responseText}`)
-  }
-
-  return response.json() as Promise<TResponse>
-}
-
-function createEnableBankingJwt() {
-  const applicationId = process.env.ENABLE_BANKING_APPLICATION_ID
-  const privateKeyBase64 = process.env.ENABLE_BANKING_PRIVATE_KEY_BASE64
-
-  if (!applicationId) {
-    throw new Error('ENABLE_BANKING_APPLICATION_ID is required')
-  }
-
-  if (!privateKeyBase64) {
-    throw new Error('ENABLE_BANKING_PRIVATE_KEY_BASE64 is required')
-  }
-
-  const nowSeconds = Math.floor(Date.now() / 1000)
-  const header = {
-    typ: 'JWT',
-    alg: 'RS256',
-    kid: applicationId,
-  }
-  const payload = {
-    iss: 'enablebanking.com',
-    aud: 'api.enablebanking.com',
-    iat: nowSeconds,
-    exp: nowSeconds + 5 * 60,
-  }
-  const unsignedToken = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(payload))}`
-  const signature = sign('RSA-SHA256', Buffer.from(unsignedToken), getEnableBankingPrivateKey())
-
-  return `${unsignedToken}.${base64Url(signature)}`
-}
-
 function getEnableBankingRedirectOrigin(requestUrl: string) {
   const configuredOrigin = process.env.ENABLE_BANKING_REDIRECT_ORIGIN?.replace(/\/$/, '')
 
@@ -730,167 +584,6 @@ function getEnableBankingRedirectOrigin(requestUrl: string) {
   }
 
   return new URL(requestUrl).origin
-}
-
-function getEnableBankingPrivateKey() {
-  const privateKeyBase64 = process.env.ENABLE_BANKING_PRIVATE_KEY_BASE64
-
-  if (!privateKeyBase64) {
-    throw new Error('ENABLE_BANKING_PRIVATE_KEY_BASE64 is required')
-  }
-
-  return Buffer.from(privateKeyBase64, 'base64').toString('utf8')
-}
-
-function base64Url(value: string | Buffer) {
-  return Buffer.from(value).toString('base64url')
-}
-
-function pickBalance(balances: EnableBankingBalance[]) {
-  const preferredBalance =
-    balances.find((balance) => balance.balance_type === 'CLBD') ??
-    balances.find((balance) => balance.balance_type === 'ITAV') ??
-    balances[0]
-
-  if (!preferredBalance?.balance_amount?.amount) {
-    return null
-  }
-
-  const amount = parseAmount(preferredBalance.balance_amount.amount)
-
-  if (!amount) {
-    return null
-  }
-
-  return {
-    amount,
-    currency: preferredBalance.balance_amount.currency ?? 'SEK',
-  }
-}
-
-function getEnableBankingAccountName(account: EnableBankingAccount) {
-  return (
-    account.name ||
-    account.details ||
-    account.account_id?.iban ||
-    account.account_id?.other?.identification ||
-    'Enable Banking account'
-  )
-}
-
-function normalizeEnableBankingTransaction(
-  transaction: EnableBankingTransaction,
-  context: {
-    accountId: string
-    fallbackCurrency: string
-  },
-): NormalizedTransaction {
-  const rawAmount = parseAmount(transaction.transaction_amount?.amount ?? '')
-  const currency = transaction.transaction_amount?.currency ?? context.fallbackCurrency
-  const bookedAt = parseDate(
-    transaction.booking_date ?? transaction.value_date ?? transaction.transaction_date ?? '',
-  )
-  const valueAt = transaction.value_date ? parseDate(transaction.value_date) : null
-  const description = getEnableBankingTransactionDescription(transaction)
-  const signedAmount = normalizeEnableBankingAmount(rawAmount, transaction.credit_debit_indicator)
-  const balanceAfterTransaction = parseOptionalAmount(
-    transaction.balance_after_transaction?.amount ?? '',
-  )
-
-  if (!signedAmount) {
-    throw new Error('Enable Banking transaction is missing an amount')
-  }
-
-  return {
-    providerTransactionId: getEnableBankingTransactionId(transaction, {
-      accountId: context.accountId,
-      bookedAt: bookedAt.toISOString(),
-      amount: signedAmount,
-      currency,
-      description,
-      balanceAfterTransaction,
-    }),
-    status: transaction.status === 'PDNG' ? 'pending' : 'booked',
-    bookedAt,
-    valueAt,
-    amount: signedAmount,
-    currency,
-    description,
-    merchantName: transaction.creditor?.name ?? transaction.debtor?.name ?? null,
-    counterpartyName: getEnableBankingCounterparty(transaction),
-    balanceAfterTransaction,
-    rawMetadata: transaction,
-  }
-}
-
-function normalizeEnableBankingAmount(
-  amount: string | null,
-  indicator: 'CRDT' | 'DBIT' | undefined,
-) {
-  if (!amount) {
-    return null
-  }
-
-  const parsedAmount = Number(amount)
-  const magnitude = Math.abs(parsedAmount)
-
-  // Enable Banking reports amounts as positive magnitudes with a separate
-  // credit/debit indicator. Treat anything that isn't an explicit credit as a
-  // debit (money out) so a missing indicator can't masquerade as income.
-  if (indicator === 'CRDT') {
-    return magnitude.toFixed(2)
-  }
-
-  return (-magnitude).toFixed(2)
-}
-
-function getEnableBankingTransactionDescription(transaction: EnableBankingTransaction) {
-  return (
-    transaction.remittance_information?.filter(Boolean).join(' ') ||
-    transaction.note ||
-    transaction.reference_number ||
-    transaction.bank_transaction_code?.description ||
-    transaction.creditor?.name ||
-    transaction.debtor?.name ||
-    'Enable Banking transaction'
-  )
-}
-
-function getEnableBankingCounterparty(transaction: EnableBankingTransaction) {
-  if (transaction.credit_debit_indicator === 'CRDT') {
-    return transaction.debtor?.name ?? transaction.creditor?.name ?? null
-  }
-
-  return transaction.creditor?.name ?? transaction.debtor?.name ?? null
-}
-
-function getEnableBankingTransactionId(
-  transaction: EnableBankingTransaction,
-  fallback: {
-    accountId: string
-    bookedAt: string
-    amount: string
-    currency: string
-    description: string
-    balanceAfterTransaction: string | null
-  },
-) {
-  if (transaction.entry_reference) {
-    return transaction.entry_reference
-  }
-
-  if (transaction.transaction_id) {
-    return transaction.transaction_id
-  }
-
-  return stableHash([
-    fallback.accountId,
-    fallback.bookedAt,
-    fallback.amount,
-    fallback.currency,
-    fallback.description,
-    fallback.balanceAfterTransaction ?? '',
-  ])
 }
 
 function parseCsv(csv: string) {

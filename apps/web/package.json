@@ -23,6 +23,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1045.0",
     "@fontsource-variable/noto-sans": "^5.2.10",
     "@bank-data/auth": "workspace:*",
+    "@bank-data/banking": "workspace:*",
     "@bank-data/db": "workspace:*",
     "@bank-data/jobs": "workspace:*",
     "@bank-data/storage": "workspace:*",

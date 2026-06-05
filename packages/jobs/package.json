@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@ai-sdk/mistral": "^3.0.37",
+    "@bank-data/banking": "workspace:*",
     "@bank-data/db": "workspace:*",
     "@bank-data/storage": "workspace:*",
     "@trigger.dev/sdk": "^4.4.6",
