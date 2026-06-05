@@ -17,6 +17,11 @@ export async function refreshAccessToken(refreshToken: string) {
   return credentials
 }
 
+// How far before the last successful sync to re-scan on each run. Wide on
+// purpose: dedup makes re-scanning cheap, and the buffer absorbs indexing lag
+// and missed runs so mail isn't permanently dropped.
+const SYNC_LOOKBACK_DAYS = 7
+
 // Metadata only — no binary data loaded yet
 export type GmailAttachmentMeta = {
   filename: string
@@ -73,10 +78,15 @@ export async function listPdfAttachments(
     daysAgo.setDate(daysAgo.getDate() - 30)
     dateFilter = `after:${daysAgo.toISOString().split('T')[0]}`
   } else {
-    // Subtract 1 day to be inclusive — Gmail's after: is exclusive
-    const dayBefore = new Date(lastSyncedAt)
-    dayBefore.setDate(dayBefore.getDate() - 1)
-    dateFilter = `after:${dayBefore.toISOString().split('T')[0]}`
+    // Look back a full week from the last sync rather than just since the last
+    // run. Re-scanning already-seen mail is effectively free — gmailImportedRef
+    // dedups before any download or OCR — so a generous window lets transient
+    // misses self-heal (Gmail attachment-indexing lag, a skipped/failed run, or
+    // mail filed into the mailbox late) instead of being lost forever once
+    // lastSyncedAt advances past them.
+    const lookback = new Date(lastSyncedAt)
+    lookback.setDate(lookback.getDate() - SYNC_LOOKBACK_DAYS)
+    dateFilter = `after:${lookback.toISOString().split('T')[0]}`
   }
 
   // Searches all mail (including archived) — no label filter intentional
