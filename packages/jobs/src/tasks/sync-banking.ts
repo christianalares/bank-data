@@ -43,17 +43,22 @@ export const syncBankingTask = schemaTask({
   run: async (payload) => {
     const db = createDb()
     const overlapDays = payload.overlapDays
+    // Include `error` connections so a previous transient provider failure
+    // self-heals on the next run. Genuine consent failures are moved to
+    // `disconnected` (see the catch block) and require manual re-authorization,
+    // so they are intentionally excluded here.
     const connections = await db.query.bankConnection.findMany({
-      where: (table, { and, eq }) =>
-        and(eq(table.provider, 'enable_banking'), eq(table.status, 'connected')),
+      where: (table, { and, eq, inArray }) =>
+        and(eq(table.provider, 'enable_banking'), inArray(table.status, ['connected', 'error'])),
     })
 
     if (connections.length === 0) {
-      logger.info('No connected Enable Banking connections found; nothing to sync.')
+      logger.info('No syncable Enable Banking connections found; nothing to sync.')
     }
 
     let syncedAccounts = 0
     let syncedTransactions = 0
+    const transientFailures: { connectionId: string; message: string }[] = []
 
     for (const connection of connections) {
       try {
@@ -63,13 +68,20 @@ export const syncBankingTask = schemaTask({
       } catch (caughtError) {
         const message =
           caughtError instanceof Error ? caughtError.message : 'Enable Banking sync failed'
+        const status = isConsentFailure(message) ? 'disconnected' : 'error'
 
-        logger.error('Failed to sync connection', { connectionId: connection.id, message })
+        logger.error('Failed to sync connection', { connectionId: connection.id, status, message })
 
         await db
           .update(bankConnection)
-          .set({ status: 'error', errorMessage: message, updatedAt: new Date() })
+          .set({ status, errorMessage: message, updatedAt: new Date() })
           .where(eq(bankConnection.id, connection.id))
+
+        // Consent failures need a human to re-authorize; retrying is pointless.
+        // Transient failures should surface as a failed run (alerting + retries).
+        if (status === 'error') {
+          transientFailures.push({ connectionId: connection.id, message })
+        }
       }
     }
 
@@ -77,6 +89,14 @@ export const syncBankingTask = schemaTask({
     await Promise.all(
       workspaceIds.map((workspaceId) => matchPendingAttachmentsTask.trigger({ workspaceId })),
     )
+
+    if (transientFailures.length > 0) {
+      throw new Error(
+        `Enable Banking sync failed for ${transientFailures.length} connection(s): ${transientFailures
+          .map((failure) => `${failure.connectionId} (${failure.message})`)
+          .join('; ')}`,
+      )
+    }
 
     return { syncedConnections: connections.length, syncedAccounts, syncedTransactions }
   },
@@ -268,6 +288,18 @@ async function upsertBankTransaction({
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Distinguish a genuine consent/authorization failure (the session has been
+ * revoked or expired and the user must re-authorize) from a transient provider
+ * hiccup. Enable Banking surfaces auth problems as HTTP 401/403; everything
+ * else (e.g. a bank-side "Internal server error" ASPSP_ERROR) is treated as
+ * transient and retried on the next run instead of permanently disabling the
+ * connection.
+ */
+function isConsentFailure(message: string) {
+  return message.includes('(401)') || message.includes('(403)')
+}
 
 function getDateFrom(lastSyncedAt: Date | null, overlapDays: number) {
   const fallbackDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
