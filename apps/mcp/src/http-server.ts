@@ -11,6 +11,8 @@ export async function startHttpServer() {
   const port = getPort()
   const apiToken = getRequiredApiToken()
   const allowedHosts = getAllowedHosts(port)
+  const allowedOrigins = getAllowedOrigins(port)
+  const concurrencyLimiter = new ConcurrencyLimiter(getMaxConcurrentRequests())
 
   const httpServer = createServer(async (request, response) => {
     try {
@@ -19,6 +21,8 @@ export async function startHttpServer() {
         response,
         apiToken,
         allowedHosts,
+        allowedOrigins,
+        concurrencyLimiter,
       })
     } catch (error) {
       console.error(error)
@@ -46,16 +50,25 @@ export async function startHttpServer() {
 
   return {
     close: async () => {
-      await new Promise<void>((resolve, reject) => {
-        httpServer.close((error) => {
-          if (error) {
-            reject(error)
-            return
-          }
+      const forceCloseTimer = setTimeout(() => {
+        httpServer.closeAllConnections()
+      }, 10_000)
+      forceCloseTimer.unref()
 
-          resolve()
+      try {
+        await new Promise<void>((resolve, reject) => {
+          httpServer.close((error) => {
+            if (error) {
+              reject(error)
+              return
+            }
+
+            resolve()
+          })
         })
-      })
+      } finally {
+        clearTimeout(forceCloseTimer)
+      }
     },
   }
 }
@@ -65,11 +78,15 @@ async function handleRequest({
   response,
   apiToken,
   allowedHosts,
+  allowedOrigins,
+  concurrencyLimiter,
 }: {
   request: IncomingMessage
   response: ServerResponse
   apiToken: string
   allowedHosts: Set<string>
+  allowedOrigins: Set<string>
+  concurrencyLimiter: ConcurrencyLimiter
 }) {
   const url = new URL(request.url ?? '/', 'http://localhost')
 
@@ -88,6 +105,11 @@ async function handleRequest({
     return
   }
 
+  if (!hasAllowedOrigin(request, allowedOrigins)) {
+    sendJson(response, 403, { error: 'Origin not allowed' })
+    return
+  }
+
   if (!hasValidBearerToken(request.headers.authorization, apiToken)) {
     response.setHeader('WWW-Authenticate', 'Bearer realm="bank-data-finance"')
     response.setHeader('Cache-Control', 'no-store')
@@ -101,6 +123,20 @@ async function handleRequest({
     return
   }
 
+  if (!concurrencyLimiter.tryAcquire()) {
+    response.setHeader('Retry-After', '1')
+    sendJson(response, 429, { error: 'Too many concurrent requests' })
+    return
+  }
+
+  try {
+    await processMcpRequest(request, response)
+  } finally {
+    concurrencyLimiter.release()
+  }
+}
+
+async function processMcpRequest(request: IncomingMessage, response: ServerResponse) {
   let body: Buffer
 
   try {
@@ -144,6 +180,16 @@ function getPort() {
   return value
 }
 
+function getMaxConcurrentRequests() {
+  const value = Number(process.env.MCP_MAX_CONCURRENT_REQUESTS ?? 10)
+
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    throw new Error('MCP_MAX_CONCURRENT_REQUESTS must be an integer between 1 and 100')
+  }
+
+  return value
+}
+
 function getAllowedHosts(port: number) {
   const configuredHosts = process.env.MCP_ALLOWED_HOSTS?.split(',') ?? []
   const hosts = [
@@ -158,23 +204,51 @@ function getAllowedHosts(port: number) {
   )
 }
 
+function getAllowedOrigins(port: number) {
+  const configuredOrigins = process.env.MCP_ALLOWED_ORIGINS?.split(',') ?? []
+  const configuredHosts = process.env.MCP_ALLOWED_HOSTS?.split(',') ?? []
+  const origins = [
+    ...configuredOrigins,
+    ...configuredHosts.map((host) => `https://${host.trim()}`),
+    process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.trim()}`
+      : undefined,
+    `http://localhost:${port}`,
+    `http://127.0.0.1:${port}`,
+  ]
+
+  return new Set(
+    origins
+      .map((origin) => normalizeOrigin(origin))
+      .filter((origin): origin is string => Boolean(origin)),
+  )
+}
+
 function hasAllowedHost(request: IncomingMessage, allowedHosts: Set<string>) {
   const host = request.headers.host?.toLowerCase()
 
-  if (!host || !allowedHosts.has(host)) {
-    return false
-  }
+  return Boolean(host && allowedHosts.has(host))
+}
 
+function hasAllowedOrigin(request: IncomingMessage, allowedOrigins: Set<string>) {
   const origin = request.headers.origin
 
   if (!origin) {
     return true
   }
 
+  return allowedOrigins.has(normalizeOrigin(origin) ?? '')
+}
+
+function normalizeOrigin(value: string | undefined) {
+  if (!value) {
+    return undefined
+  }
+
   try {
-    return allowedHosts.has(new URL(origin).host.toLowerCase())
+    return new URL(value).origin.toLowerCase()
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -229,3 +303,22 @@ function sendJson(response: ServerResponse, statusCode: number, body: Record<str
 }
 
 class RequestBodyTooLargeError extends Error {}
+
+class ConcurrencyLimiter {
+  private activeRequests = 0
+
+  constructor(private readonly maxConcurrentRequests: number) {}
+
+  tryAcquire() {
+    if (this.activeRequests >= this.maxConcurrentRequests) {
+      return false
+    }
+
+    this.activeRequests += 1
+    return true
+  }
+
+  release() {
+    this.activeRequests = Math.max(0, this.activeRequests - 1)
+  }
+}

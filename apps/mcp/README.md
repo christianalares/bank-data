@@ -16,6 +16,8 @@ The HTTP transport also requires:
 - `PORT`: HTTP port; Railway provides this automatically
 - `MCP_ALLOWED_HOSTS`: optional comma-separated custom domains; Railway's generated public domain
   is allowed automatically
+- `MCP_ALLOWED_ORIGINS`: optional comma-separated serialized origins for browser-based clients
+- `MCP_MAX_CONCURRENT_REQUESTS`: bounded authenticated request concurrency; defaults to `10`
 
 The configured user must not be banned and must already own a workspace. The MCP server never
 creates a user or workspace.
@@ -83,8 +85,10 @@ Every MCP request must include:
 Authorization: Bearer your-token
 ```
 
-The public health check is available at `/health`. The MCP endpoint validates the request host,
-limits declared request bodies to 1 MiB, and returns no storage keys, signed URLs, or file bytes.
+The public health check is available at `/health`. The MCP endpoint validates request hosts and
+origins, reads at most 1 MiB per request, bounds concurrent work, and returns no storage keys,
+signed URLs, or file bytes.
 
 Static bearer authentication is suitable for this single-user, read-only deployment. Replace it
-with OAuth before supporting multiple users or write tools.
+with OAuth before supporting multiple users or write tools. It is a manually configured
+pre-shared-token mode and intentionally does not advertise OAuth discovery metadata.
