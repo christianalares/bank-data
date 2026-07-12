@@ -70,7 +70,7 @@ server.registerTool(
   {
     title: 'Get transaction details',
     description:
-      'Get one workspace transaction with its matched and suggested invoice attachments. Document bytes and signed storage URLs are intentionally excluded.',
+      'Get one workspace transaction with the first page of matched and suggested invoice attachments. Continue with list_attachments when attachmentsNextCursor is present. Document bytes and signed storage URLs are intentionally excluded.',
     inputSchema: getTransactionInputSchema,
     outputSchema: transactionDetailSchema,
     annotations: readOnlyAnnotations,

@@ -292,23 +292,16 @@ export class FinanceService {
       throw new Error('Transaction not found')
     }
 
-    const attachments: AttachmentSummary[] = []
-    let cursor: string | undefined
-
-    do {
-      const attachmentPage = await this.listAttachments({
-        transactionId,
-        state: 'any',
-        limit: 100,
-        cursor,
-      })
-      attachments.push(...attachmentPage.attachments)
-      cursor = attachmentPage.nextCursor ?? undefined
-    } while (cursor)
+    const attachmentPage = await this.listAttachments({
+      transactionId,
+      state: 'any',
+      limit: 100,
+    })
 
     return {
       ...toTransactionSummary(row),
-      attachments,
+      attachments: attachmentPage.attachments,
+      attachmentsNextCursor: attachmentPage.nextCursor,
     }
   }
 

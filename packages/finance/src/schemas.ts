@@ -138,6 +138,7 @@ export const attachmentPageSchema = z.object({
 
 export const transactionDetailSchema = transactionSummarySchema.extend({
   attachments: z.array(attachmentSummarySchema),
+  attachmentsNextCursor: z.string().nullable(),
 })
 
 export const financeOverviewSchema = z.object({
