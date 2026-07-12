@@ -5,10 +5,17 @@ document bytes or signed storage URLs.
 
 ## Configuration
 
-The stdio server requires:
+Both transports require:
 
 - `DATABASE_URL`: PostgreSQL connection string
-- `MCP_OWNER_EMAIL`: existing Bank Data user whose workspace the server may read
+- `MCP_OWNER_EMAIL`: exact email of the existing user whose workspace the server may read
+
+The HTTP transport also requires:
+
+- `MCP_API_TOKEN`: random bearer token with at least 32 characters
+- `PORT`: HTTP port; Railway provides this automatically
+- `MCP_ALLOWED_HOSTS`: optional comma-separated custom domains; Railway's generated public domain
+  is allowed automatically
 
 The configured user must not be banned and must already own a workspace. The MCP server never
 creates a user or workspace.
@@ -49,5 +56,35 @@ Example MCP client configuration after building:
 }
 ```
 
-This is intentionally a local stdio transport. A remote transport requires proper OAuth,
-workspace-scoped authorization, rate limiting, and audit logging before it is safe to expose.
+## Deploy a separate Railway service
+
+Create a new service from the same repository. Keep its root directory at `/` and set its Railway
+config file path to `/apps/mcp/railway.toml`.
+
+Configure these service variables:
+
+```dotenv
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+MCP_OWNER_EMAIL=your-exact-login-email@example.com
+MCP_API_TOKEN=replace-with-a-random-32-character-or-longer-secret
+MCP_TRANSPORT=http
+```
+
+Replace `Postgres` with the actual Railway database service name. Generate a public domain for the
+MCP service, then connect clients to:
+
+```text
+https://mcp.example.invalid/mcp
+```
+
+Every MCP request must include:
+
+```http
+Authorization: Bearer your-token
+```
+
+The public health check is available at `/health`. The MCP endpoint validates the request host,
+limits declared request bodies to 1 MiB, and returns no storage keys, signed URLs, or file bytes.
+
+Static bearer authentication is suitable for this single-user, read-only deployment. Replace it
+with OAuth before supporting multiple users or write tools.
