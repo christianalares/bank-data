@@ -11,19 +11,12 @@ export async function startHttpServer() {
   const port = getPort()
   const apiToken = getRequiredApiToken()
   const allowedHosts = getAllowedHosts(port)
-  const mcpServer = createFinanceMcpServer()
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  })
-  await mcpServer.connect(transport)
 
   const httpServer = createServer(async (request, response) => {
     try {
       await handleRequest({
         request,
         response,
-        transport,
         apiToken,
         allowedHosts,
       })
@@ -53,8 +46,6 @@ export async function startHttpServer() {
 
   return {
     close: async () => {
-      await transport.close()
-      await mcpServer.close()
       await new Promise<void>((resolve, reject) => {
         httpServer.close((error) => {
           if (error) {
@@ -72,13 +63,11 @@ export async function startHttpServer() {
 async function handleRequest({
   request,
   response,
-  transport,
   apiToken,
   allowedHosts,
 }: {
   request: IncomingMessage
   response: ServerResponse
-  transport: WebStandardStreamableHTTPServerTransport
   apiToken: string
   allowedHosts: Set<string>
 }) {
@@ -128,11 +117,21 @@ async function handleRequest({
   const webRequest = new Request(`http://${request.headers.host}${request.url}`, {
     method: 'POST',
     headers: toWebHeaders(request),
-    body,
+    body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
   })
-  const webResponse = await transport.handleRequest(webRequest)
+  const mcpServer = createFinanceMcpServer()
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  })
+  await mcpServer.connect(transport)
 
-  await writeWebResponse(response, webResponse)
+  try {
+    const webResponse = await transport.handleRequest(webRequest)
+    await writeWebResponse(response, webResponse)
+  } finally {
+    await mcpServer.close()
+  }
 }
 
 function getPort() {
