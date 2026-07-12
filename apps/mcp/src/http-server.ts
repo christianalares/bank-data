@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 
 import { getRequiredApiToken, hasValidBearerToken } from './bearer-auth'
 import { createFinanceMcpServer } from './mcp-server'
@@ -12,7 +12,7 @@ export async function startHttpServer() {
   const apiToken = getRequiredApiToken()
   const allowedHosts = getAllowedHosts(port)
   const mcpServer = createFinanceMcpServer()
-  const transport = new StreamableHTTPServerTransport({
+  const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   })
@@ -78,7 +78,7 @@ async function handleRequest({
 }: {
   request: IncomingMessage
   response: ServerResponse
-  transport: StreamableHTTPServerTransport
+  transport: WebStandardStreamableHTTPServerTransport
   apiToken: string
   allowedHosts: Set<string>
 }) {
@@ -106,14 +106,33 @@ async function handleRequest({
     return
   }
 
-  const contentLength = Number(request.headers['content-length'] ?? 0)
-
-  if (Number.isFinite(contentLength) && contentLength > MAX_CONTENT_LENGTH_BYTES) {
-    sendJson(response, 413, { error: 'Request body too large' })
+  if (request.method !== 'POST') {
+    response.setHeader('Allow', 'POST')
+    sendJson(response, 405, { error: 'Method not allowed' })
     return
   }
 
-  await transport.handleRequest(request, response)
+  let body: Buffer
+
+  try {
+    body = await readRequestBody(request)
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      sendJson(response, 413, { error: 'Request body too large' })
+      return
+    }
+
+    throw error
+  }
+
+  const webRequest = new Request(`http://${request.headers.host}${request.url}`, {
+    method: 'POST',
+    headers: toWebHeaders(request),
+    body,
+  })
+  const webResponse = await transport.handleRequest(webRequest)
+
+  await writeWebResponse(response, webResponse)
 }
 
 function getPort() {
@@ -136,9 +155,7 @@ function getAllowedHosts(port: number) {
   ]
 
   return new Set(
-    hosts
-      .map((host) => host?.trim().toLowerCase())
-      .filter((host): host is string => Boolean(host)),
+    hosts.map((host) => host?.trim().toLowerCase()).filter((host): host is string => Boolean(host)),
   )
 }
 
@@ -162,9 +179,54 @@ function hasAllowedHost(request: IncomingMessage, allowedHosts: Set<string>) {
   }
 }
 
+async function readRequestBody(request: IncomingMessage) {
+  const chunks: Buffer[] = []
+  let size = 0
+
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += buffer.length
+
+    if (size > MAX_CONTENT_LENGTH_BYTES) {
+      throw new RequestBodyTooLargeError()
+    }
+
+    chunks.push(buffer)
+  }
+
+  return Buffer.concat(chunks)
+}
+
+function toWebHeaders(request: IncomingMessage) {
+  const headers = new Headers()
+
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(name, item)
+      }
+    } else if (value !== undefined) {
+      headers.set(name, value)
+    }
+  }
+
+  return headers
+}
+
+async function writeWebResponse(response: ServerResponse, webResponse: Response) {
+  response.statusCode = webResponse.status
+  webResponse.headers.forEach((value, name) => {
+    response.setHeader(name, value)
+  })
+  const body = Buffer.from(await webResponse.arrayBuffer())
+  response.end(body)
+}
+
 function sendJson(response: ServerResponse, statusCode: number, body: Record<string, string>) {
   response.statusCode = statusCode
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.setHeader('X-Content-Type-Options', 'nosniff')
   response.end(JSON.stringify(body))
 }
+
+class RequestBodyTooLargeError extends Error {}
