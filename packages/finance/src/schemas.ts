@@ -3,6 +3,13 @@ import { z } from 'zod'
 const isoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected an ISO date in YYYY-MM-DD format')
+  .refine(isValidIsoDate, 'Expected a real calendar date')
+
+function isValidIsoDate(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`)
+
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
 
 export const attachmentStateSchema = z.enum(['any', 'missing', 'suggested', 'matched'])
 export const attachmentWorkflowStateSchema = z.enum([
@@ -19,7 +26,12 @@ export const searchTransactionsInputSchema = z
     dateTo: isoDateSchema.optional(),
     amountMin: z.number().finite().optional(),
     amountMax: z.number().finite().optional(),
-    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase())
+      .optional(),
     accountId: z.string().uuid().optional(),
     transactionStatus: z.enum(['booked', 'pending']).optional(),
     attachmentState: attachmentStateSchema.default('any'),

@@ -1,4 +1,3 @@
-export { FinanceService } from './service'
 export {
   attachmentPageSchema,
   attachmentSummarySchema,
@@ -9,3 +8,4 @@ export {
   transactionDetailSchema,
   transactionPageSchema,
 } from './schemas'
+export { FinanceService } from './service'

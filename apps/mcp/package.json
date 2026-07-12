@@ -6,7 +6,7 @@
     "bank-data-mcp": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --platform node --clean",
+    "build": "tsup",
     "dev": "dotenv -e ../../.env -- tsx src/index.ts",
     "lint": "biome check .",
     "start": "node dist/index.js",

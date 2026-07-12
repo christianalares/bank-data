@@ -62,10 +62,9 @@ type TransactionReference = Pick<
 export class FinanceService {
   private readonly db: Database
   private readonly ownerEmail: string
-  private workspaceIdPromise: Promise<string> | undefined
 
   constructor({ ownerEmail, db = createDb() }: FinanceServiceOptions) {
-    this.ownerEmail = ownerEmail.trim().toLowerCase()
+    this.ownerEmail = ownerEmail.trim()
     this.db = db
 
     if (!this.ownerEmail) {
@@ -119,7 +118,7 @@ export class FinanceService {
       conditions.push(eq(bankTransaction.status, filters.transactionStatus))
     }
 
-    conditions.push(transactionAttachmentStateCondition(filters.attachmentState))
+    conditions.push(transactionAttachmentStateCondition(filters.attachmentState, workspaceId))
 
     if (filters.cursor) {
       const cursor = decodeCursor(filters.cursor)
@@ -145,8 +144,8 @@ export class FinanceService {
         counterpartyName: bankTransaction.counterpartyName,
         status: bankTransaction.status,
         note: bankTransaction.note,
-        attachmentCount: matchedAttachmentCount(),
-        suggestedAttachmentCount: suggestedAttachmentCount(),
+        attachmentCount: matchedAttachmentCount(workspaceId),
+        suggestedAttachmentCount: suggestedAttachmentCount(workspaceId),
       })
       .from(bankTransaction)
       .leftJoin(bankAccount, eq(bankTransaction.accountId, bankAccount.id))
@@ -279,8 +278,8 @@ export class FinanceService {
         counterpartyName: bankTransaction.counterpartyName,
         status: bankTransaction.status,
         note: bankTransaction.note,
-        attachmentCount: matchedAttachmentCount(),
-        suggestedAttachmentCount: suggestedAttachmentCount(),
+        attachmentCount: matchedAttachmentCount(workspaceId),
+        suggestedAttachmentCount: suggestedAttachmentCount(workspaceId),
       })
       .from(bankTransaction)
       .leftJoin(bankAccount, eq(bankTransaction.accountId, bankAccount.id))
@@ -293,15 +292,23 @@ export class FinanceService {
       throw new Error('Transaction not found')
     }
 
-    const attachmentPage = await this.listAttachments({
-      transactionId,
-      state: 'any',
-      limit: 100,
-    })
+    const attachments: AttachmentSummary[] = []
+    let cursor: string | undefined
+
+    do {
+      const attachmentPage = await this.listAttachments({
+        transactionId,
+        state: 'any',
+        limit: 100,
+        cursor,
+      })
+      attachments.push(...attachmentPage.attachments)
+      cursor = attachmentPage.nextCursor ?? undefined
+    } while (cursor)
 
     return {
       ...toTransactionSummary(row),
-      attachments: attachmentPage.attachments,
+      attachments,
     }
   }
 
@@ -310,9 +317,18 @@ export class FinanceService {
     const [transactionTotal, transactionMissing, transactionSuggested, transactionMatched] =
       await Promise.all([
         this.countTransactions(workspaceId),
-        this.countTransactions(workspaceId, transactionAttachmentStateCondition('missing')),
-        this.countTransactions(workspaceId, transactionAttachmentStateCondition('suggested')),
-        this.countTransactions(workspaceId, transactionAttachmentStateCondition('matched')),
+        this.countTransactions(
+          workspaceId,
+          transactionAttachmentStateCondition('missing', workspaceId),
+        ),
+        this.countTransactions(
+          workspaceId,
+          transactionAttachmentStateCondition('suggested', workspaceId),
+        ),
+        this.countTransactions(
+          workspaceId,
+          transactionAttachmentStateCondition('matched', workspaceId),
+        ),
       ])
     const [attachmentTotal, attachmentUnmatched, attachmentSuggested, attachmentMatched, ignored] =
       await Promise.all([
@@ -341,16 +357,12 @@ export class FinanceService {
   }
 
   private async getWorkspaceId() {
-    if (!this.workspaceIdPromise) {
-      this.workspaceIdPromise = this.resolveWorkspaceId()
-    }
-
-    return this.workspaceIdPromise
+    return this.resolveWorkspaceId()
   }
 
   private async resolveWorkspaceId() {
     const owner = await this.db.query.user.findFirst({
-      where: (table) => sql`lower(${table.email}) = ${this.ownerEmail}`,
+      where: (table, { eq }) => eq(table.email, this.ownerEmail),
       columns: {
         id: true,
         banned: true,
@@ -427,35 +439,40 @@ export class FinanceService {
   }
 }
 
-function matchedAttachmentCount() {
+function matchedAttachmentCount(workspaceId: string) {
   return sql<number>`(
     select count(*)::int
     from ${attachment}
     where ${attachment.transactionId} = ${bankTransaction.id}
+      and ${attachment.workspaceId} = ${workspaceId}
   )`.mapWith(Number)
 }
 
-function suggestedAttachmentCount() {
+function suggestedAttachmentCount(workspaceId: string) {
   return sql<number>`(
     select count(*)::int
     from ${attachment}
     where ${attachment.suggestedTransactionId} = ${bankTransaction.id}
+      and ${attachment.workspaceId} = ${workspaceId}
       and ${attachment.status} = 'suggested'
   )`.mapWith(Number)
 }
 
 function transactionAttachmentStateCondition(
   state: SearchTransactionsInput['attachmentState'],
+  workspaceId: string,
 ): SQL | undefined {
   const hasMatchedAttachment = sql<boolean>`exists (
     select 1
     from ${attachment}
     where ${attachment.transactionId} = ${bankTransaction.id}
+      and ${attachment.workspaceId} = ${workspaceId}
   )`
   const hasSuggestedAttachment = sql<boolean>`exists (
     select 1
     from ${attachment}
     where ${attachment.suggestedTransactionId} = ${bankTransaction.id}
+      and ${attachment.workspaceId} = ${workspaceId}
       and ${attachment.status} = 'suggested'
   )`
 
