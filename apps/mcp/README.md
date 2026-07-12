@@ -17,7 +17,8 @@ The HTTP transport also requires:
 - `MCP_ALLOWED_HOSTS`: optional comma-separated custom domains; Railway's generated public domain
   is allowed automatically
 - `MCP_ALLOWED_ORIGINS`: optional comma-separated serialized origins for browser-based clients
-- `MCP_MAX_CONCURRENT_REQUESTS`: bounded authenticated request concurrency; defaults to `10`
+- `MCP_MAX_CONCURRENT_REQUESTS`: bounded authenticated request concurrency; defaults to `4`
+- `DATABASE_STATEMENT_TIMEOUT_MS`: PostgreSQL statement deadline; HTTP mode defaults to `25000`
 
 The configured user must not be banned and must already own a workspace. The MCP server never
 creates a user or workspace.
@@ -70,6 +71,7 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 MCP_OWNER_EMAIL=your-exact-login-email@example.com
 MCP_API_TOKEN=replace-with-a-random-32-character-or-longer-secret
 MCP_TRANSPORT=http
+DATABASE_STATEMENT_TIMEOUT_MS=25000
 ```
 
 Replace `Postgres` with the actual Railway database service name. Generate a public domain for the

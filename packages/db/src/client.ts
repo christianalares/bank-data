@@ -17,7 +17,18 @@ export function createDb(connectionString = process.env.DATABASE_URL) {
   }
 
   if (!globalObj[GLOBAL_DB_KEY]) {
-    const client = postgres(connectionString, { max: 10 })
+    const statementTimeout = getStatementTimeout()
+    const client = postgres(connectionString, {
+      max: 10,
+      connect_timeout: 10,
+      ...(statementTimeout
+        ? {
+            connection: {
+              statement_timeout: statementTimeout,
+            },
+          }
+        : {}),
+    })
     globalObj[GLOBAL_DB_KEY] = drizzle(client, { schema })
   }
 
@@ -25,3 +36,19 @@ export function createDb(connectionString = process.env.DATABASE_URL) {
 }
 
 export type Database = ReturnType<typeof createDb>
+
+function getStatementTimeout() {
+  const configuredValue = process.env.DATABASE_STATEMENT_TIMEOUT_MS
+
+  if (!configuredValue) {
+    return undefined
+  }
+
+  const timeout = Number(configuredValue)
+
+  if (!Number.isInteger(timeout) || timeout < 1) {
+    throw new Error('DATABASE_STATEMENT_TIMEOUT_MS must be a positive integer')
+  }
+
+  return timeout
+}

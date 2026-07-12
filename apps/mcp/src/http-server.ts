@@ -8,6 +8,8 @@ import { createFinanceMcpServer } from './mcp-server'
 const MAX_CONTENT_LENGTH_BYTES = 1024 * 1024
 
 export async function startHttpServer() {
+  process.env.DATABASE_STATEMENT_TIMEOUT_MS ??= '25000'
+
   const port = getPort()
   const apiToken = getRequiredApiToken()
   const allowedHosts = getAllowedHosts(port)
@@ -181,7 +183,7 @@ function getPort() {
 }
 
 function getMaxConcurrentRequests() {
-  const value = Number(process.env.MCP_MAX_CONCURRENT_REQUESTS ?? 10)
+  const value = Number(process.env.MCP_MAX_CONCURRENT_REQUESTS ?? 4)
 
   if (!Number.isInteger(value) || value < 1 || value > 100) {
     throw new Error('MCP_MAX_CONCURRENT_REQUESTS must be an integer between 1 and 100')
