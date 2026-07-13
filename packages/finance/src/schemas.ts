@@ -61,6 +61,15 @@ export const getTransactionInputSchema = z.object({
   transactionId: z.string().uuid(),
 })
 
+export const attachmentIdInputSchema = z.object({
+  attachmentId: z.string().uuid(),
+})
+
+export const linkAttachmentInputSchema = z.object({
+  attachmentId: z.string().uuid(),
+  transactionId: z.string().uuid(),
+})
+
 export const transactionSummarySchema = z.object({
   id: z.string().uuid(),
   accountId: z.string().uuid(),
@@ -134,6 +143,21 @@ export const attachmentSummarySchema = z.object({
 export const attachmentPageSchema = z.object({
   attachments: z.array(attachmentSummarySchema),
   nextCursor: z.string().nullable(),
+})
+
+export const attachmentDownloadInfoSchema = z.object({
+  id: z.string().uuid(),
+  filename: z.string(),
+  contentType: z.string(),
+  storageKey: z.string(),
+})
+
+export const attachmentMutationResultSchema = z.object({
+  attachmentId: z.string().uuid(),
+  previousState: attachmentWorkflowStateSchema,
+  state: attachmentWorkflowStateSchema,
+  transactionId: z.string().uuid().nullable(),
+  suggestedTransactionId: z.string().uuid().nullable(),
 })
 
 export const transactionDetailSchema = transactionSummarySchema.extend({

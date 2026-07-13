@@ -1,8 +1,12 @@
 export {
+  attachmentDownloadInfoSchema,
+  attachmentIdInputSchema,
+  attachmentMutationResultSchema,
   attachmentPageSchema,
   attachmentSummarySchema,
   financeOverviewSchema,
   getTransactionInputSchema,
+  linkAttachmentInputSchema,
   listAttachmentsInputSchema,
   searchTransactionsInputSchema,
   transactionDetailSchema,

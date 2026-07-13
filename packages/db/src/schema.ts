@@ -7,6 +7,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -295,6 +296,29 @@ export const attachment = pgTable(
     index('attachment_workspace_idx').on(table.workspaceId),
     index('attachment_transaction_idx').on(table.transactionId),
     index('attachment_suggested_transaction_idx').on(table.suggestedTransactionId),
+  ],
+)
+
+export const attachmentSuggestionDismissal = pgTable(
+  'attachment_suggestion_dismissal',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    attachmentId: uuid('attachment_id')
+      .notNull()
+      .references(() => attachment.id, { onDelete: 'cascade' }),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => bankTransaction.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'attachment_suggestion_dismissal_pk',
+      columns: [table.attachmentId, table.transactionId],
+    }),
+    index('attachment_suggestion_dismissal_workspace_idx').on(table.workspaceId),
   ],
 )
 

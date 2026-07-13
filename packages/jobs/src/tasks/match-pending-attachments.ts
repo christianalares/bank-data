@@ -1,8 +1,15 @@
 import { mistral } from '@ai-sdk/mistral'
-import { attachment, bankTransaction, createDb, type ParsedInvoice } from '@bank-data/db'
+import {
+  attachment,
+  attachmentSuggestionDismissal,
+  bankTransaction,
+  createDb,
+  type ParsedInvoice,
+} from '@bank-data/db'
 import { logger, schemaTask } from '@trigger.dev/sdk'
 import { generateText, Output } from 'ai'
-import { and, eq, gte, isNotNull, lt, lte } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, notExists } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 
 const payloadSchema = z.object({
@@ -57,6 +64,7 @@ export const matchPendingAttachmentsTask = schemaTask({
   queue: { concurrencyLimit: 1 },
   run: async (payload) => {
     const db = createDb()
+    const confirmedAttachment = alias(attachment, 'confirmed_attachment')
 
     const pendingAttachments = await db.query.attachment.findMany({
       where: (table, { and, eq, isNotNull }) =>
@@ -78,6 +86,31 @@ export const matchPendingAttachmentsTask = schemaTask({
     const matchedTransactionIds = new Set(
       matchedRows.map((row) => row.transactionId).filter((id): id is string => id != null),
     )
+    const dismissedRows =
+      pendingAttachments.length > 0
+        ? await db
+            .select({
+              attachmentId: attachmentSuggestionDismissal.attachmentId,
+              transactionId: attachmentSuggestionDismissal.transactionId,
+            })
+            .from(attachmentSuggestionDismissal)
+            .where(
+              and(
+                eq(attachmentSuggestionDismissal.workspaceId, payload.workspaceId),
+                inArray(
+                  attachmentSuggestionDismissal.attachmentId,
+                  pendingAttachments.map((item) => item.id),
+                ),
+              ),
+            )
+        : []
+    const dismissedTransactionIds = new Map<string, Set<string>>()
+
+    for (const row of dismissedRows) {
+      const transactionIds = dismissedTransactionIds.get(row.attachmentId) ?? new Set<string>()
+      transactionIds.add(row.transactionId)
+      dismissedTransactionIds.set(row.attachmentId, transactionIds)
+    }
 
     logger.info('Scanning unmatched attachments', {
       workspaceId: payload.workspaceId,
@@ -128,8 +161,10 @@ export const matchPendingAttachmentsTask = schemaTask({
           ),
         )
 
+      const dismissedForAttachment = dismissedTransactionIds.get(att.id)
       const candidates = rawCandidates.filter(
-        (candidate) => !matchedTransactionIds.has(candidate.id),
+        (candidate) =>
+          !matchedTransactionIds.has(candidate.id) && !dismissedForAttachment?.has(candidate.id),
       )
 
       if (candidates.length === 0) {
@@ -192,10 +227,34 @@ export const matchPendingAttachmentsTask = schemaTask({
         continue
       }
 
-      await db
+      const [updated] = await db
         .update(attachment)
         .set({ suggestedTransactionId: chosen.transactionId, status: 'suggested' })
-        .where(eq(attachment.id, att.id))
+        .where(
+          and(
+            eq(attachment.id, att.id),
+            eq(attachment.workspaceId, payload.workspaceId),
+            eq(attachment.status, 'unmatched'),
+            isNull(attachment.transactionId),
+            isNull(attachment.suggestedTransactionId),
+            notExists(
+              db
+                .select({ id: confirmedAttachment.id })
+                .from(confirmedAttachment)
+                .where(
+                  and(
+                    eq(confirmedAttachment.workspaceId, payload.workspaceId),
+                    eq(confirmedAttachment.transactionId, chosen.transactionId),
+                  ),
+                ),
+            ),
+          ),
+        )
+        .returning({ id: attachment.id })
+
+      if (!updated) {
+        continue
+      }
 
       matched++
       logger.info('Suggested match stored', {

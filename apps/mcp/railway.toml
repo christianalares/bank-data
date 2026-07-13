@@ -5,12 +5,14 @@ watchPatterns = [
   "/apps/mcp/**",
   "/packages/db/**",
   "/packages/finance/**",
+  "/packages/storage/**",
   "/package.json",
   "/pnpm-lock.yaml",
   "/pnpm-workspace.yaml",
 ]
 
 [deploy]
+preDeployCommand = "pnpm --filter @bank-data/db db:migrate:prod"
 startCommand = "pnpm --filter @bank-data/mcp start"
 healthcheckPath = "/health"
 healthcheckTimeout = 30

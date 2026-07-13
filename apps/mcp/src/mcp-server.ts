@@ -1,14 +1,19 @@
 import {
+  attachmentIdInputSchema,
+  attachmentMutationResultSchema,
   attachmentPageSchema,
   FinanceService,
   financeOverviewSchema,
   getTransactionInputSchema,
+  linkAttachmentInputSchema,
   listAttachmentsInputSchema,
   searchTransactionsInputSchema,
   transactionDetailSchema,
   transactionPageSchema,
 } from '@bank-data/finance'
+import { createStorageClient } from '@bank-data/storage'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { z } from 'zod'
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -16,6 +21,26 @@ const readOnlyAnnotations = {
   idempotentHint: true,
   openWorldHint: false,
 } as const
+
+const mutationAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const
+
+const destructiveMutationAnnotations = {
+  ...mutationAnnotations,
+  destructiveHint: true,
+} as const
+
+const attachmentDownloadUrlSchema = z.object({
+  attachmentId: z.string().uuid(),
+  filename: z.string(),
+  contentType: z.string(),
+  url: z.string().url(),
+  expiresAt: z.string().datetime(),
+})
 
 export function createFinanceMcpServer() {
   const server = new McpServer({
@@ -33,7 +58,7 @@ export function createFinanceMcpServer() {
       outputSchema: financeOverviewSchema,
       annotations: readOnlyAnnotations,
     },
-    async () => executeRead(() => finance.getOverview()),
+    async () => executeOperation(() => finance.getOverview()),
   )
 
   server.registerTool(
@@ -46,7 +71,7 @@ export function createFinanceMcpServer() {
       outputSchema: transactionPageSchema,
       annotations: readOnlyAnnotations,
     },
-    async (input) => executeRead(() => finance.searchTransactions(input)),
+    async (input) => executeOperation(() => finance.searchTransactions(input)),
   )
 
   server.registerTool(
@@ -59,7 +84,7 @@ export function createFinanceMcpServer() {
       outputSchema: attachmentPageSchema,
       annotations: readOnlyAnnotations,
     },
-    async (input) => executeRead(() => finance.listAttachments(input)),
+    async (input) => executeOperation(() => finance.listAttachments(input)),
   )
 
   server.registerTool(
@@ -72,13 +97,111 @@ export function createFinanceMcpServer() {
       outputSchema: transactionDetailSchema,
       annotations: readOnlyAnnotations,
     },
-    async ({ transactionId }) => executeRead(() => finance.getTransaction(transactionId)),
+    async ({ transactionId }) => executeOperation(() => finance.getTransaction(transactionId)),
+  )
+
+  server.registerTool(
+    'get_attachment_download_url',
+    {
+      title: 'Get attachment download URL',
+      description:
+        'Create a short-lived signed URL for viewing or downloading one invoice attachment. The URL expires after five minutes.',
+      inputSchema: attachmentIdInputSchema,
+      outputSchema: attachmentDownloadUrlSchema,
+      annotations: {
+        ...readOnlyAnnotations,
+        openWorldHint: true,
+      },
+    },
+    async ({ attachmentId }) =>
+      executeOperation(async () => {
+        const attachment = await finance.getAttachmentDownloadInfo(attachmentId)
+        const expiresInSeconds = 5 * 60
+        const issuedAt = Date.now()
+        const url = await createStorageClient().getSignedReadUrl(
+          attachment.storageKey,
+          expiresInSeconds,
+        )
+
+        return {
+          attachmentId: attachment.id,
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          url,
+          expiresAt: new Date(issuedAt + expiresInSeconds * 1000).toISOString(),
+        }
+      }),
+  )
+
+  server.registerTool(
+    'link_attachment_to_transaction',
+    {
+      title: 'Link attachment to transaction',
+      description:
+        'Confirm a manual match by linking an attachment to a transaction. This replaces any existing suggestion or confirmed link on the attachment.',
+      inputSchema: linkAttachmentInputSchema,
+      outputSchema: attachmentMutationResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async ({ attachmentId, transactionId }) =>
+      executeOperation(() => finance.linkAttachment(attachmentId, transactionId)),
+  )
+
+  server.registerTool(
+    'approve_suggested_match',
+    {
+      title: 'Approve suggested match',
+      description:
+        'Confirm the attachment’s current suggested transaction match. Fails if the suggestion changed or no longer exists.',
+      inputSchema: attachmentIdInputSchema,
+      outputSchema: attachmentMutationResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async ({ attachmentId }) => executeOperation(() => finance.approveSuggestedMatch(attachmentId)),
+  )
+
+  server.registerTool(
+    'dismiss_suggested_match',
+    {
+      title: 'Dismiss suggested match',
+      description:
+        'Reject the attachment’s current suggested transaction and return it to unmatched.',
+      inputSchema: attachmentIdInputSchema,
+      outputSchema: attachmentMutationResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async ({ attachmentId }) => executeOperation(() => finance.dismissSuggestedMatch(attachmentId)),
+  )
+
+  server.registerTool(
+    'unlink_attachment',
+    {
+      title: 'Unlink attachment',
+      description: 'Remove an attachment’s confirmed transaction link and return it to unmatched.',
+      inputSchema: attachmentIdInputSchema,
+      outputSchema: attachmentMutationResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async ({ attachmentId }) => executeOperation(() => finance.unlinkAttachment(attachmentId)),
+  )
+
+  server.registerTool(
+    'ignore_attachment',
+    {
+      title: 'Ignore attachment',
+      description:
+        'Mark an unmatched or suggested attachment as ignored so it no longer needs matching. Linked attachments must be unlinked first.',
+      inputSchema: attachmentIdInputSchema,
+      outputSchema: attachmentMutationResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async ({ attachmentId }) => executeOperation(() => finance.ignoreAttachment(attachmentId)),
   )
 
   return server
 }
 
-async function executeRead<T extends Record<string, unknown>>(operation: () => Promise<T>) {
+async function executeOperation<T extends Record<string, unknown>>(operation: () => Promise<T>) {
   try {
     const result = await operation()
 
@@ -111,7 +234,21 @@ function safeErrorMessage(error: unknown) {
     return 'Finance request failed'
   }
 
-  const safeMessages = ['Invalid pagination cursor', 'No workspace exists', 'Transaction not found']
+  const safeMessages = [
+    'Invalid pagination cursor',
+    'No workspace exists',
+    'Transaction not found',
+    'Attachment not found',
+    'Attachment has no suggested match to approve',
+    'Attachment has no suggested match to dismiss',
+    'Attachment is not linked to a transaction',
+    'Linked attachments must be unlinked before they can be ignored',
+    'Attachment changed before it could be linked',
+    'Attachment changed before the suggestion could be approved',
+    'Attachment changed before the suggestion could be dismissed',
+    'Attachment changed before it could be unlinked',
+    'Attachment changed before it could be ignored',
+  ]
 
   if (safeMessages.includes(error.message)) {
     return error.message

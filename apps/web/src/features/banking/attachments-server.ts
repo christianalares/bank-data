@@ -4,7 +4,11 @@ import {
   createDb,
   type DatabaseTable,
 } from '@bank-data/db'
-import { attachment, bankTransaction } from '@bank-data/db/schema'
+import {
+  attachment,
+  attachmentSuggestionDismissal,
+  bankTransaction,
+} from '@bank-data/db/schema'
 import type { processAttachmentTask } from '@bank-data/jobs'
 import { createStorageClient } from '@bank-data/storage'
 import { createServerFn } from '@tanstack/react-start'
@@ -232,6 +236,15 @@ export const linkAttachmentToTransaction = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     const db = createDb()
     const workspace = await getOrCreateWorkspace(context.session.user.id)
+    const transaction = await db.query.bankTransaction.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.transactionId), eq(table.workspaceId, workspace.id)),
+      columns: { id: true },
+    })
+
+    if (!transaction) {
+      throw new Error('Transaction not found')
+    }
 
     const [updated] = await db
       .update(attachment)
@@ -258,18 +271,37 @@ export const approveSuggestedMatch = createServerFn({ method: 'POST' })
         and(eq(table.id, data.attachmentId), eq(table.workspaceId, workspace.id)),
     })
 
-    if (!row?.suggestedTransactionId) {
+    if (!row?.suggestedTransactionId || row.status !== 'suggested' || row.transactionId !== null) {
       throw new Error('No suggested match to approve')
+    }
+
+    const suggestedTransactionId = row.suggestedTransactionId
+    const transaction = await db.query.bankTransaction.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, suggestedTransactionId), eq(table.workspaceId, workspace.id)),
+      columns: { id: true },
+    })
+
+    if (!transaction) {
+      throw new Error('Suggested transaction not found')
     }
 
     const [updated] = await db
       .update(attachment)
       .set({
-        transactionId: row.suggestedTransactionId,
+        transactionId: suggestedTransactionId,
         suggestedTransactionId: null,
         status: 'matched',
       })
-      .where(and(eq(attachment.id, data.attachmentId), eq(attachment.workspaceId, workspace.id)))
+      .where(
+        and(
+          eq(attachment.id, data.attachmentId),
+          eq(attachment.workspaceId, workspace.id),
+          eq(attachment.status, 'suggested'),
+          isNull(attachment.transactionId),
+          eq(attachment.suggestedTransactionId, suggestedTransactionId),
+        ),
+      )
       .returning()
 
     if (!updated) {
@@ -285,16 +317,44 @@ export const dismissSuggestedMatch = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     const db = createDb()
     const workspace = await getOrCreateWorkspace(context.session.user.id)
+    const row = await db.query.attachment.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.attachmentId), eq(table.workspaceId, workspace.id)),
+    })
 
-    const [updated] = await db
-      .update(attachment)
-      .set({ suggestedTransactionId: null, status: 'unmatched' })
-      .where(and(eq(attachment.id, data.attachmentId), eq(attachment.workspaceId, workspace.id)))
-      .returning()
-
-    if (!updated) {
-      throw new Error('Attachment not found')
+    if (!row?.suggestedTransactionId || row.status !== 'suggested' || row.transactionId !== null) {
+      throw new Error('No suggested match to dismiss')
     }
+
+    const suggestedTransactionId = row.suggestedTransactionId
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(attachmentSuggestionDismissal)
+        .values({
+          workspaceId: workspace.id,
+          attachmentId: data.attachmentId,
+          transactionId: suggestedTransactionId,
+        })
+        .onConflictDoNothing()
+
+      const [updated] = await tx
+        .update(attachment)
+        .set({ suggestedTransactionId: null, status: 'unmatched' })
+        .where(
+          and(
+            eq(attachment.id, data.attachmentId),
+            eq(attachment.workspaceId, workspace.id),
+            eq(attachment.status, 'suggested'),
+            isNull(attachment.transactionId),
+            eq(attachment.suggestedTransactionId, suggestedTransactionId),
+          ),
+        )
+        .returning()
+
+      if (!updated) {
+        throw new Error('Suggestion changed before it could be dismissed')
+      }
+    })
 
     return { ok: true }
   })

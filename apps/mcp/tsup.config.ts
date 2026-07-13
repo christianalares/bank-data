@@ -9,5 +9,5 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
-  noExternal: ['@bank-data/finance', '@bank-data/db'],
+  noExternal: ['@bank-data/finance', '@bank-data/db', '@bank-data/storage'],
 })

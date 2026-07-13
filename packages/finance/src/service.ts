@@ -1,5 +1,6 @@
 import {
   attachment,
+  attachmentSuggestionDismissal,
   bankAccount,
   bankTransaction,
   createDb,
@@ -57,6 +58,13 @@ type TransactionReference = Pick<
   TransactionSummary,
   'id' | 'bookedAt' | 'amount' | 'currency' | 'description' | 'merchantName'
 >
+
+type AttachmentStateRow = {
+  id: string
+  status: 'unmatched' | 'suggested' | 'matched' | 'ignored'
+  transactionId: string | null
+  suggestedTransactionId: string | null
+}
 
 export class FinanceService {
   private readonly db: Database
@@ -298,6 +306,208 @@ export class FinanceService {
     }
   }
 
+  async getAttachmentDownloadInfo(attachmentId: string) {
+    const workspaceId = await this.getWorkspaceId()
+    const row = await this.getWorkspaceAttachment(workspaceId, attachmentId)
+
+    return {
+      id: row.id,
+      filename: row.filename,
+      contentType: row.contentType,
+      storageKey: row.s3Key,
+    }
+  }
+
+  async linkAttachment(attachmentId: string, transactionId: string) {
+    const workspaceId = await this.getWorkspaceId()
+    const [row] = await Promise.all([
+      this.getWorkspaceAttachment(workspaceId, attachmentId),
+      this.requireWorkspaceTransaction(workspaceId, transactionId),
+    ])
+    const [updated] = await this.db
+      .update(attachment)
+      .set({
+        transactionId,
+        suggestedTransactionId: null,
+        status: 'matched',
+      })
+      .where(and(eq(attachment.id, attachmentId), eq(attachment.workspaceId, workspaceId)))
+      .returning({
+        id: attachment.id,
+        status: attachment.status,
+        transactionId: attachment.transactionId,
+        suggestedTransactionId: attachment.suggestedTransactionId,
+      })
+
+    if (!updated) {
+      throw new Error('Attachment changed before it could be linked')
+    }
+
+    return toAttachmentMutationResult(row, updated)
+  }
+
+  async approveSuggestedMatch(attachmentId: string) {
+    const workspaceId = await this.getWorkspaceId()
+    const row = await this.getWorkspaceAttachment(workspaceId, attachmentId)
+
+    if (row.status !== 'suggested' || row.transactionId || !row.suggestedTransactionId) {
+      throw new Error('Attachment has no suggested match to approve')
+    }
+
+    await this.requireWorkspaceTransaction(workspaceId, row.suggestedTransactionId)
+
+    const [updated] = await this.db
+      .update(attachment)
+      .set({
+        transactionId: row.suggestedTransactionId,
+        suggestedTransactionId: null,
+        status: 'matched',
+      })
+      .where(
+        and(
+          eq(attachment.id, attachmentId),
+          eq(attachment.workspaceId, workspaceId),
+          eq(attachment.status, 'suggested'),
+          isNull(attachment.transactionId),
+          eq(attachment.suggestedTransactionId, row.suggestedTransactionId),
+        ),
+      )
+      .returning({
+        id: attachment.id,
+        status: attachment.status,
+        transactionId: attachment.transactionId,
+        suggestedTransactionId: attachment.suggestedTransactionId,
+      })
+
+    if (!updated) {
+      throw new Error('Attachment changed before the suggestion could be approved')
+    }
+
+    return toAttachmentMutationResult(row, updated)
+  }
+
+  async dismissSuggestedMatch(attachmentId: string) {
+    const workspaceId = await this.getWorkspaceId()
+    const row = await this.getWorkspaceAttachment(workspaceId, attachmentId)
+
+    if (row.status !== 'suggested' || row.transactionId || !row.suggestedTransactionId) {
+      throw new Error('Attachment has no suggested match to dismiss')
+    }
+
+    const suggestedTransactionId = row.suggestedTransactionId
+    const updated = await this.db.transaction(async (tx) => {
+      await tx
+        .insert(attachmentSuggestionDismissal)
+        .values({
+          workspaceId,
+          attachmentId,
+          transactionId: suggestedTransactionId,
+        })
+        .onConflictDoNothing()
+
+      const [result] = await tx
+        .update(attachment)
+        .set({
+          suggestedTransactionId: null,
+          status: 'unmatched',
+        })
+        .where(
+          and(
+            eq(attachment.id, attachmentId),
+            eq(attachment.workspaceId, workspaceId),
+            eq(attachment.status, 'suggested'),
+            isNull(attachment.transactionId),
+            eq(attachment.suggestedTransactionId, suggestedTransactionId),
+          ),
+        )
+        .returning({
+          id: attachment.id,
+          status: attachment.status,
+          transactionId: attachment.transactionId,
+          suggestedTransactionId: attachment.suggestedTransactionId,
+        })
+
+      if (!result) {
+        throw new Error('Attachment changed before the suggestion could be dismissed')
+      }
+
+      return result
+    })
+
+    return toAttachmentMutationResult(row, updated)
+  }
+
+  async unlinkAttachment(attachmentId: string) {
+    const workspaceId = await this.getWorkspaceId()
+    const row = await this.getWorkspaceAttachment(workspaceId, attachmentId)
+
+    if (!row.transactionId) {
+      throw new Error('Attachment is not linked to a transaction')
+    }
+
+    const [updated] = await this.db
+      .update(attachment)
+      .set({
+        transactionId: null,
+        suggestedTransactionId: null,
+        status: 'unmatched',
+      })
+      .where(
+        and(
+          eq(attachment.id, attachmentId),
+          eq(attachment.workspaceId, workspaceId),
+          eq(attachment.transactionId, row.transactionId),
+        ),
+      )
+      .returning({
+        id: attachment.id,
+        status: attachment.status,
+        transactionId: attachment.transactionId,
+        suggestedTransactionId: attachment.suggestedTransactionId,
+      })
+
+    if (!updated) {
+      throw new Error('Attachment changed before it could be unlinked')
+    }
+
+    return toAttachmentMutationResult(row, updated)
+  }
+
+  async ignoreAttachment(attachmentId: string) {
+    const workspaceId = await this.getWorkspaceId()
+    const row = await this.getWorkspaceAttachment(workspaceId, attachmentId)
+
+    if (row.transactionId) {
+      throw new Error('Linked attachments must be unlinked before they can be ignored')
+    }
+
+    const [updated] = await this.db
+      .update(attachment)
+      .set({
+        suggestedTransactionId: null,
+        status: 'ignored',
+      })
+      .where(
+        and(
+          eq(attachment.id, attachmentId),
+          eq(attachment.workspaceId, workspaceId),
+          isNull(attachment.transactionId),
+        ),
+      )
+      .returning({
+        id: attachment.id,
+        status: attachment.status,
+        transactionId: attachment.transactionId,
+        suggestedTransactionId: attachment.suggestedTransactionId,
+      })
+
+    if (!updated) {
+      throw new Error('Attachment changed before it could be ignored')
+    }
+
+    return toAttachmentMutationResult(row, updated)
+  }
+
   async getOverview() {
     const workspaceId = await this.getWorkspaceId()
     const [transactionTotal, transactionMissing, transactionSuggested, transactionMatched] =
@@ -355,6 +565,35 @@ export class FinanceService {
     }
 
     return ownerWorkspace.id
+  }
+
+  private async getWorkspaceAttachment(workspaceId: string, attachmentId: string) {
+    const row = await this.db.query.attachment.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, attachmentId), eq(table.workspaceId, workspaceId)),
+    })
+
+    if (!row) {
+      throw new Error('Attachment not found')
+    }
+
+    return row
+  }
+
+  private async requireWorkspaceTransaction(workspaceId: string, transactionId: string) {
+    const row = await this.db.query.bankTransaction.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, transactionId), eq(table.workspaceId, workspaceId)),
+      columns: {
+        id: true,
+      },
+    })
+
+    if (!row) {
+      throw new Error('Transaction not found')
+    }
+
+    return row
   }
 
   private async getTransactionReferences(workspaceId: string, transactionIds: string[]) {
@@ -521,28 +760,44 @@ function toAttachmentSummary(
   transaction: TransactionReference | null,
   suggestedTransaction: TransactionReference | null,
 ): AttachmentSummary {
-  let state: AttachmentSummary['state'] = 'unmatched'
-
-  if (row.transactionId) {
-    state = 'matched'
-  } else if (row.status === 'ignored') {
-    state = 'ignored'
-  } else if (row.status === 'suggested' && row.suggestedTransactionId) {
-    state = 'suggested'
-  }
-
   return {
     id: row.id,
     filename: row.filename,
     contentType: row.contentType,
     sizeBytes: row.sizeBytes,
     source: row.source,
-    state,
+    state: getAttachmentWorkflowState(row),
     createdAt: row.createdAt.toISOString(),
     parsedInvoice: row.parsedInvoice,
     transaction,
     suggestedTransaction,
   }
+}
+
+function toAttachmentMutationResult(previous: AttachmentStateRow, updated: AttachmentStateRow) {
+  return {
+    attachmentId: updated.id,
+    previousState: getAttachmentWorkflowState(previous),
+    state: getAttachmentWorkflowState(updated),
+    transactionId: updated.transactionId,
+    suggestedTransactionId: updated.suggestedTransactionId,
+  }
+}
+
+function getAttachmentWorkflowState(row: AttachmentStateRow): AttachmentSummary['state'] {
+  if (row.transactionId) {
+    return 'matched'
+  }
+
+  if (row.status === 'ignored') {
+    return 'ignored'
+  }
+
+  if (row.status === 'suggested' && row.suggestedTransactionId) {
+    return 'suggested'
+  }
+
+  return 'unmatched'
 }
 
 function escapeLikePattern(value: string) {

@@ -1,7 +1,7 @@
 # Bank Data finance MCP
 
-Read-only MCP server for searching transactions and invoice attachment metadata without exposing
-document bytes or signed storage URLs.
+MCP server for searching transactions, viewing invoice attachments through short-lived signed
+links, and managing transaction matches without exposing raw document bytes.
 
 ## Configuration
 
@@ -18,6 +18,8 @@ The HTTP transport also requires:
 - `MCP_ALLOWED_ORIGINS`: optional comma-separated serialized origins for browser-based clients
 - `MCP_MAX_CONCURRENT_REQUESTS`: bounded authenticated request concurrency; defaults to `4`
 - `DATABASE_STATEMENT_TIMEOUT_MS`: PostgreSQL statement deadline; HTTP mode defaults to `25000`
+- `AWS_S3_BUCKET_NAME`, `AWS_ENDPOINT_URL`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, and
+  `AWS_SECRET_ACCESS_KEY`: required when creating attachment download URLs
 
 The server reads the app's workspace directly. It never creates a workspace.
 
@@ -27,6 +29,12 @@ The server reads the app's workspace directly. It never creates a workspace.
 - `search_transactions`
 - `list_attachments`
 - `get_transaction`
+- `get_attachment_download_url`
+- `link_attachment_to_transaction`
+- `approve_suggested_match`
+- `dismiss_suggested_match`
+- `unlink_attachment`
+- `ignore_attachment`
 
 All list results are cursor-paginated. Pass the returned `nextCursor` into the next call with the
 same filters.
@@ -71,8 +79,11 @@ MCP_TRANSPORT=http
 DATABASE_STATEMENT_TIMEOUT_MS=25000
 ```
 
-Replace `Postgres` with the actual Railway database service name. Generate a public domain for the
-MCP service, then connect clients to:
+Replace `Postgres` with the actual Railway database service name.
+Copy or reference the five `AWS_*` storage variables used by the web service into the MCP service
+to enable signed attachment links.
+
+Generate a public domain for the MCP service, then connect clients to:
 
 ```text
 https://mcp.example.invalid/mcp
@@ -85,9 +96,8 @@ Authorization: Bearer your-token
 ```
 
 The public health check is available at `/health`. The MCP endpoint validates request hosts and
-origins, reads at most 1 MiB per request, bounds concurrent work, and returns no storage keys,
-signed URLs, or file bytes.
+origins, reads at most 1 MiB per request, bounds concurrent work, and never returns raw file bytes.
+Signed download links expire after five minutes and can include the attachment’s storage path.
 
-Static bearer authentication is suitable for this single-user, read-only deployment. Replace it
-with OAuth before supporting multiple users or write tools. It is a manually configured
-pre-shared-token mode and intentionally does not advertise OAuth discovery metadata.
+Static bearer authentication is suitable for this single-user deployment. It is a manually
+configured, pre-shared-token mode and intentionally does not advertise OAuth discovery metadata.
