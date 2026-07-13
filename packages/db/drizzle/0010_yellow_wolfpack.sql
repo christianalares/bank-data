@@ -1,0 +1,1 @@
+CREATE INDEX "attachment_suggested_transaction_idx" ON "attachment" USING btree ("suggested_transaction_id");

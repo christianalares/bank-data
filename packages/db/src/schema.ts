@@ -294,6 +294,7 @@ export const attachment = pgTable(
   (table) => [
     index('attachment_workspace_idx').on(table.workspaceId),
     index('attachment_transaction_idx').on(table.transactionId),
+    index('attachment_suggested_transaction_idx').on(table.suggestedTransactionId),
   ],
 )
 

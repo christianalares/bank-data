@@ -71,6 +71,13 @@
       "when": 1779112185596,
       "tag": "0009_jittery_impossible_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783872743566,
+      "tag": "0010_yellow_wolfpack",
+      "breakpoints": true
     }
   ]
 }
