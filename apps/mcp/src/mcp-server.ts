@@ -22,9 +22,7 @@ export function createFinanceMcpServer() {
     name: 'bank-data-finance',
     version: '0.2.0',
   })
-  const finance = new FinanceService({
-    ownerEmail: getRequiredOwnerEmail(),
-  })
+  const finance = new FinanceService()
 
   server.registerTool(
     'get_finance_overview',
@@ -108,27 +106,12 @@ async function executeRead<T extends Record<string, unknown>>(operation: () => P
   }
 }
 
-function getRequiredOwnerEmail() {
-  const ownerEmail = process.env.MCP_OWNER_EMAIL?.trim()
-
-  if (!ownerEmail) {
-    throw new Error('MCP_OWNER_EMAIL is required')
-  }
-
-  return ownerEmail
-}
-
 function safeErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {
     return 'Finance request failed'
   }
 
-  const safeMessages = [
-    'Invalid pagination cursor',
-    'MCP owner is not authorized',
-    'No workspace exists for the configured MCP owner',
-    'Transaction not found',
-  ]
+  const safeMessages = ['Invalid pagination cursor', 'No workspace exists', 'Transaction not found']
 
   if (safeMessages.includes(error.message)) {
     return error.message

@@ -8,7 +8,6 @@ document bytes or signed storage URLs.
 Both transports require:
 
 - `DATABASE_URL`: PostgreSQL connection string
-- `MCP_OWNER_EMAIL`: exact email of the existing user whose workspace the server may read
 
 The HTTP transport also requires:
 
@@ -20,8 +19,7 @@ The HTTP transport also requires:
 - `MCP_MAX_CONCURRENT_REQUESTS`: bounded authenticated request concurrency; defaults to `4`
 - `DATABASE_STATEMENT_TIMEOUT_MS`: PostgreSQL statement deadline; HTTP mode defaults to `25000`
 
-The configured user must not be banned and must already own a workspace. The MCP server never
-creates a user or workspace.
+The server reads the app's workspace directly. It never creates a workspace.
 
 ## Tools
 
@@ -68,7 +66,6 @@ Configure these service variables:
 
 ```dotenv
 DATABASE_URL=${{Postgres.DATABASE_URL}}
-MCP_OWNER_EMAIL=your-exact-login-email@example.com
 MCP_API_TOKEN=replace-with-a-random-32-character-or-longer-secret
 MCP_TRANSPORT=http
 DATABASE_STATEMENT_TIMEOUT_MS=25000

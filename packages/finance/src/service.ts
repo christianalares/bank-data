@@ -34,7 +34,6 @@ import {
 } from './schemas'
 
 type FinanceServiceOptions = {
-  ownerEmail: string
   db?: Database
 }
 
@@ -61,15 +60,9 @@ type TransactionReference = Pick<
 
 export class FinanceService {
   private readonly db: Database
-  private readonly ownerEmail: string
 
-  constructor({ ownerEmail, db = createDb() }: FinanceServiceOptions) {
-    this.ownerEmail = ownerEmail.trim()
+  constructor({ db = createDb() }: FinanceServiceOptions = {}) {
     this.db = db
-
-    if (!this.ownerEmail) {
-      throw new Error('An owner email is required')
-    }
   }
 
   async searchTransactions(input: SearchTransactionsInput) {
@@ -350,31 +343,15 @@ export class FinanceService {
   }
 
   private async getWorkspaceId() {
-    return this.resolveWorkspaceId()
-  }
-
-  private async resolveWorkspaceId() {
-    const owner = await this.db.query.user.findFirst({
-      where: (table, { eq }) => eq(table.email, this.ownerEmail),
-      columns: {
-        id: true,
-        banned: true,
-      },
-    })
-
-    if (!owner || owner.banned) {
-      throw new Error('MCP owner is not authorized')
-    }
-
     const ownerWorkspace = await this.db.query.workspace.findFirst({
-      where: (table, { eq }) => eq(table.ownerId, owner.id),
       columns: {
         id: true,
       },
+      orderBy: (table, { asc }) => [asc(table.createdAt)],
     })
 
     if (!ownerWorkspace) {
-      throw new Error('No workspace exists for the configured MCP owner')
+      throw new Error('No workspace exists')
     }
 
     return ownerWorkspace.id
