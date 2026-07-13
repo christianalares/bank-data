@@ -17,6 +17,11 @@ import { z } from 'zod'
 
 import { renderAttachmentImage } from './attachment-image'
 
+// Preview links are cached in storage and handed back as short-lived signed
+// URLs so Markdown-only clients (e.g. Raycast) can render them inline.
+const PREVIEW_EXPIRES_SECONDS = 60 * 60
+const PREVIEW_EXPIRES_MINUTES = PREVIEW_EXPIRES_SECONDS / 60
+
 const readOnlyAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -145,32 +150,15 @@ export function createFinanceMcpServer() {
     {
       title: 'View attachment as image',
       description:
-        'Render an attachment as an inline image for viewing. PDFs are rendered to a PNG (defaults to page 1; pass page for others and check totalPages in the summary). Image attachments are returned directly. Use get_attachment_download_url only when you explicitly need the original file or a shareable link.',
+        'Render an attachment as a viewable image. PDFs are rendered to a PNG (defaults to page 1; pass page for others and check totalPages). The result includes both a native image block and a short-lived signed preview URL as Markdown, so image-capable and Markdown-only clients can both display it inline. When replying, include the returned Markdown image so the user can see it. Use get_attachment_download_url only when the user explicitly needs the original file or a shareable download link.',
       inputSchema: attachmentImageInputSchema,
-      annotations: readOnlyAnnotations,
+      annotations: {
+        ...readOnlyAnnotations,
+        openWorldHint: true,
+      },
     },
     async ({ attachmentId, page }) =>
-      executeImageOperation(async () => {
-        const attachment = await finance.getAttachmentDownloadInfo(attachmentId)
-        const bytes = await createStorageClient().getObjectBytes(attachment.storageKey)
-        const rendered = await renderAttachmentImage({
-          bytes,
-          contentType: attachment.contentType,
-          page,
-        })
-
-        return {
-          image: { data: rendered.data.toString('base64'), mimeType: rendered.mimeType },
-          summary: {
-            attachmentId: attachment.id,
-            filename: attachment.filename,
-            sourceContentType: attachment.contentType,
-            imageContentType: rendered.mimeType,
-            ...(rendered.page ? { page: rendered.page } : {}),
-            ...(rendered.totalPages ? { totalPages: rendered.totalPages } : {}),
-          },
-        }
-      }),
+      executeImageOperation(() => buildAttachmentPreview(finance, attachmentId, page)),
   )
 
   server.registerTool(
@@ -269,14 +257,83 @@ async function executeOperation<T extends Record<string, unknown>>(operation: ()
   }
 }
 
+async function buildAttachmentPreview(finance: FinanceService, attachmentId: string, page: number) {
+  const storage = createStorageClient()
+  const attachment = await finance.getAttachmentDownloadInfo(attachmentId)
+  const isPdf = attachment.contentType === 'application/pdf'
+
+  let image: { data: Buffer; mimeType: string }
+  let previewUrl: string
+  let totalPages: number | undefined
+
+  if (isPdf) {
+    // Cache the rendered page so repeat views (and Markdown-only clients that
+    // re-fetch the URL) never re-run the pdfjs render.
+    const key = `previews/${attachment.id}/page-${page}.png`
+
+    if (await storage.objectExists(key)) {
+      image = { data: await storage.getObjectBytes(key), mimeType: 'image/png' }
+    } else {
+      const originalBytes = await storage.getObjectBytes(attachment.storageKey)
+      const rendered = await renderAttachmentImage({
+        bytes: originalBytes,
+        contentType: attachment.contentType,
+        page,
+      })
+      await storage.putObject({ key, body: rendered.data, contentType: 'image/png' })
+      image = { data: rendered.data, mimeType: rendered.mimeType }
+      totalPages = rendered.totalPages
+    }
+
+    previewUrl = await storage.getSignedReadUrl(key, PREVIEW_EXPIRES_SECONDS)
+  } else {
+    // Image attachments are already viewable files in storage, so the preview
+    // URL points straight at the original — no render or extra upload needed.
+    const originalBytes = await storage.getObjectBytes(attachment.storageKey)
+    const rendered = await renderAttachmentImage({
+      bytes: originalBytes,
+      contentType: attachment.contentType,
+      page,
+    })
+    image = { data: rendered.data, mimeType: rendered.mimeType }
+    previewUrl = await storage.getSignedReadUrl(attachment.storageKey, PREVIEW_EXPIRES_SECONDS)
+  }
+
+  const pageInfo = pageInfoText(isPdf ? page : undefined, totalPages)
+  const altText = `Preview of ${attachment.filename}${pageInfo}`
+
+  return {
+    image: { data: image.data.toString('base64'), mimeType: image.mimeType },
+    text: [
+      `![${altText}](${previewUrl})`,
+      '',
+      `Inline preview of ${attachment.filename}${pageInfo}. This preview link expires in ${PREVIEW_EXPIRES_MINUTES} minutes. Use get_attachment_download_url for the original file or a shareable download link.`,
+    ].join('\n'),
+  }
+}
+
+function pageInfoText(page: number | undefined, totalPages: number | undefined) {
+  if (!page || (page === 1 && !totalPages)) {
+    return ''
+  }
+  if (totalPages && totalPages > 1) {
+    return ` (page ${page} of ${totalPages})`
+  }
+  if (totalPages === 1) {
+    return ''
+  }
+
+  return ` (page ${page})`
+}
+
 async function executeImageOperation(
   operation: () => Promise<{
     image: { data: string; mimeType: string }
-    summary: Record<string, unknown>
+    text: string
   }>,
 ) {
   try {
-    const { image, summary } = await operation()
+    const { image, text } = await operation()
 
     return {
       content: [
@@ -287,7 +344,7 @@ async function executeImageOperation(
         },
         {
           type: 'text' as const,
-          text: JSON.stringify(summary),
+          text,
         },
       ],
     }

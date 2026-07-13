@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -15,6 +16,7 @@ export type PutObjectInput = {
 export type StorageClient = {
   putObject(input: PutObjectInput): Promise<void>
   getObjectBytes(key: string): Promise<Buffer>
+  objectExists(key: string): Promise<boolean>
   getSignedReadUrl(key: string, expiresInSeconds?: number): Promise<string>
   deleteObject(key: string): Promise<void>
 }
@@ -79,6 +81,22 @@ export function createStorageClient(): StorageClient {
       }
 
       return Buffer.concat(chunks)
+    },
+    async objectExists(key) {
+      try {
+        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+        return true
+      } catch (error) {
+        const name = (error as { name?: string }).name
+        const statusCode = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+          ?.httpStatusCode
+
+        if (name === 'NotFound' || name === 'NoSuchKey' || statusCode === 404) {
+          return false
+        }
+
+        throw error
+      }
     },
     async getSignedReadUrl(key, expiresInSeconds = 60 * 15) {
       return getSignedUrl(

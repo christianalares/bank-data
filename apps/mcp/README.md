@@ -40,11 +40,16 @@ The server reads the app's workspace directly. It never creates a workspace.
 All list results are cursor-paginated. Pass the returned `nextCursor` into the next call with the
 same filters.
 
-`get_attachment_image` returns a viewable image inline: PDFs are rendered server-side to a PNG (page
-1 by default; pass `page` for others and read `totalPages` from the summary), and image attachments
-are returned directly (downscaled when large). It never returns a URL — call
-`get_attachment_download_url` only when you explicitly need the original file or a shareable link.
-Rendering requires the `AWS_*` storage variables.
+`get_attachment_image` returns a viewable image: PDFs are rendered server-side to a PNG (page 1 by
+default; pass `page` for others, `totalPages` is reported), and image attachments are returned
+normalized (downscaled when large). The result contains both a native MCP `image` content block and
+a short-lived signed preview URL rendered as Markdown (`![...](url)`) in the text block, so
+image-capable clients (e.g. Cursor) and Markdown-only clients (e.g. Raycast) can both display it
+inline. PDF page renders are cached under `previews/<attachmentId>/page-N.png`, so repeat views reuse
+the cached PNG instead of re-rendering; image attachments are already viewable files, so their preview
+URL points straight at the original with no extra render or upload. Signed preview URLs expire after
+one hour. Use `get_attachment_download_url` for the original file or a shareable download link. Both
+tools require the `AWS_*` storage variables.
 
 ## Run locally
 
