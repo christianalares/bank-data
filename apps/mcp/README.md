@@ -29,6 +29,7 @@ The server reads the app's workspace directly. It never creates a workspace.
 - `search_transactions`
 - `list_attachments`
 - `get_transaction`
+- `get_attachment_image`
 - `get_attachment_download_url`
 - `link_attachment_to_transaction`
 - `approve_suggested_match`
@@ -38,6 +39,12 @@ The server reads the app's workspace directly. It never creates a workspace.
 
 All list results are cursor-paginated. Pass the returned `nextCursor` into the next call with the
 same filters.
+
+`get_attachment_image` returns a viewable image inline: PDFs are rendered server-side to a PNG (page
+1 by default; pass `page` for others and read `totalPages` from the summary), and image attachments
+are returned directly (downscaled when large). It never returns a URL — call
+`get_attachment_download_url` only when you explicitly need the original file or a shareable link.
+Rendering requires the `AWS_*` storage variables.
 
 ## Run locally
 

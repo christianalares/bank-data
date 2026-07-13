@@ -15,6 +15,8 @@ import { createStorageClient } from '@bank-data/storage'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 
+import { renderAttachmentImage } from './attachment-image'
+
 const readOnlyAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -40,6 +42,11 @@ const attachmentDownloadUrlSchema = z.object({
   contentType: z.string(),
   url: z.string().url(),
   expiresAt: z.string().datetime(),
+})
+
+const attachmentImageInputSchema = z.object({
+  attachmentId: z.string().uuid(),
+  page: z.number().int().min(1).max(50).default(1),
 })
 
 export function createFinanceMcpServer() {
@@ -129,6 +136,39 @@ export function createFinanceMcpServer() {
           contentType: attachment.contentType,
           url,
           expiresAt: new Date(issuedAt + expiresInSeconds * 1000).toISOString(),
+        }
+      }),
+  )
+
+  server.registerTool(
+    'get_attachment_image',
+    {
+      title: 'View attachment as image',
+      description:
+        'Render an attachment as an inline image for viewing. PDFs are rendered to a PNG (defaults to page 1; pass page for others and check totalPages in the summary). Image attachments are returned directly. Use get_attachment_download_url only when you explicitly need the original file or a shareable link.',
+      inputSchema: attachmentImageInputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ attachmentId, page }) =>
+      executeImageOperation(async () => {
+        const attachment = await finance.getAttachmentDownloadInfo(attachmentId)
+        const bytes = await createStorageClient().getObjectBytes(attachment.storageKey)
+        const rendered = await renderAttachmentImage({
+          bytes,
+          contentType: attachment.contentType,
+          page,
+        })
+
+        return {
+          image: { data: rendered.data.toString('base64'), mimeType: rendered.mimeType },
+          summary: {
+            attachmentId: attachment.id,
+            filename: attachment.filename,
+            sourceContentType: attachment.contentType,
+            imageContentType: rendered.mimeType,
+            ...(rendered.page ? { page: rendered.page } : {}),
+            ...(rendered.totalPages ? { totalPages: rendered.totalPages } : {}),
+          },
         }
       }),
   )
@@ -229,9 +269,50 @@ async function executeOperation<T extends Record<string, unknown>>(operation: ()
   }
 }
 
+async function executeImageOperation(
+  operation: () => Promise<{
+    image: { data: string; mimeType: string }
+    summary: Record<string, unknown>
+  }>,
+) {
+  try {
+    const { image, summary } = await operation()
+
+    return {
+      content: [
+        {
+          type: 'image' as const,
+          data: image.data,
+          mimeType: image.mimeType,
+        },
+        {
+          type: 'text' as const,
+          text: JSON.stringify(summary),
+        },
+      ],
+    }
+  } catch (error) {
+    console.error(error)
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: safeErrorMessage(error),
+        },
+      ],
+      isError: true,
+    }
+  }
+}
+
 function safeErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {
     return 'Finance request failed'
+  }
+
+  if (error.message.startsWith('Storage object not found')) {
+    return 'Attachment file not found'
   }
 
   const safeMessages = [
@@ -248,6 +329,8 @@ function safeErrorMessage(error: unknown) {
     'Attachment changed before the suggestion could be dismissed',
     'Attachment changed before it could be unlinked',
     'Attachment changed before it could be ignored',
+    'Attachment cannot be rendered as an image',
+    'Requested page is out of range',
   ]
 
   if (safeMessages.includes(error.message)) {

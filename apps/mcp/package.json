@@ -19,6 +19,8 @@
     "@bank-data/finance": "workspace:*",
     "@bank-data/storage": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@napi-rs/canvas": "^0.1.100",
+    "pdf-to-img": "^6.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

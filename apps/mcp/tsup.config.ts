@@ -10,4 +10,5 @@ export default defineConfig({
     js: '#!/usr/bin/env node',
   },
   noExternal: ['@bank-data/finance', '@bank-data/db', '@bank-data/storage'],
+  external: ['@napi-rs/canvas', 'pdf-to-img', 'pdfjs-dist'],
 })
