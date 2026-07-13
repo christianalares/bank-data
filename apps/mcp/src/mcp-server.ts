@@ -150,7 +150,7 @@ export function createFinanceMcpServer() {
     {
       title: 'View attachment as image',
       description:
-        'Render an attachment as a viewable image. PDFs are rendered to a PNG (defaults to page 1; pass page for others and check totalPages). The result includes both a native image block and a short-lived signed preview URL as Markdown, so image-capable and Markdown-only clients can both display it inline. When replying, include the returned Markdown image so the user can see it. Use get_attachment_download_url only when the user explicitly needs the original file or a shareable download link.',
+        'Render an attachment as a viewable image and return a Markdown image link with a short-lived signed preview URL (e.g. ![Preview ...](https://...)). PDFs are rendered to a PNG (defaults to page 1; pass page for others). Callers should paste this Markdown directly into their response so the user sees it inline — do not rely on any native image content block. Use get_attachment_download_url only when the user explicitly needs the original file or a shareable download link.',
       inputSchema: attachmentImageInputSchema,
       annotations: {
         ...readOnlyAnnotations,
@@ -261,8 +261,12 @@ async function buildAttachmentPreview(finance: FinanceService, attachmentId: str
   const storage = createStorageClient()
   const attachment = await finance.getAttachmentDownloadInfo(attachmentId)
   const isPdf = attachment.contentType === 'application/pdf'
+  const isImage = attachment.contentType.startsWith('image/')
 
-  let image: { data: Buffer; mimeType: string }
+  if (!isPdf && !isImage) {
+    throw new Error('Attachment cannot be rendered as an image')
+  }
+
   let previewUrl: string
   let totalPages: number | undefined
 
@@ -271,9 +275,7 @@ async function buildAttachmentPreview(finance: FinanceService, attachmentId: str
     // re-fetch the URL) never re-run the pdfjs render.
     const key = `previews/${attachment.id}/page-${page}.png`
 
-    if (await storage.objectExists(key)) {
-      image = { data: await storage.getObjectBytes(key), mimeType: 'image/png' }
-    } else {
+    if (!(await storage.objectExists(key))) {
       const originalBytes = await storage.getObjectBytes(attachment.storageKey)
       const rendered = await renderAttachmentImage({
         bytes: originalBytes,
@@ -281,21 +283,13 @@ async function buildAttachmentPreview(finance: FinanceService, attachmentId: str
         page,
       })
       await storage.putObject({ key, body: rendered.data, contentType: 'image/png' })
-      image = { data: rendered.data, mimeType: rendered.mimeType }
       totalPages = rendered.totalPages
     }
 
     previewUrl = await storage.getSignedReadUrl(key, PREVIEW_EXPIRES_SECONDS)
   } else {
     // Image attachments are already viewable files in storage, so the preview
-    // URL points straight at the original — no render or extra upload needed.
-    const originalBytes = await storage.getObjectBytes(attachment.storageKey)
-    const rendered = await renderAttachmentImage({
-      bytes: originalBytes,
-      contentType: attachment.contentType,
-      page,
-    })
-    image = { data: rendered.data, mimeType: rendered.mimeType }
+    // URL points straight at the original — no render, download, or upload.
     previewUrl = await storage.getSignedReadUrl(attachment.storageKey, PREVIEW_EXPIRES_SECONDS)
   }
 
@@ -303,11 +297,10 @@ async function buildAttachmentPreview(finance: FinanceService, attachmentId: str
   const altText = `Preview of ${attachment.filename}${pageInfo}`
 
   return {
-    image: { data: image.data.toString('base64'), mimeType: image.mimeType },
     text: [
       `![${altText}](${previewUrl})`,
       '',
-      `Inline preview of ${attachment.filename}${pageInfo}. This preview link expires in ${PREVIEW_EXPIRES_MINUTES} minutes. Use get_attachment_download_url for the original file or a shareable download link.`,
+      `Inline preview of ${attachment.filename}${pageInfo}. Paste the Markdown image above into your reply so the user sees it inline. This preview link expires in ${PREVIEW_EXPIRES_MINUTES} minutes. Use get_attachment_download_url for the original file or a shareable download link.`,
     ].join('\n'),
   }
 }
@@ -328,20 +321,14 @@ function pageInfoText(page: number | undefined, totalPages: number | undefined) 
 
 async function executeImageOperation(
   operation: () => Promise<{
-    image: { data: string; mimeType: string }
     text: string
   }>,
 ) {
   try {
-    const { image, text } = await operation()
+    const { text } = await operation()
 
     return {
       content: [
-        {
-          type: 'image' as const,
-          data: image.data,
-          mimeType: image.mimeType,
-        },
         {
           type: 'text' as const,
           text,
