@@ -66,7 +66,7 @@ function PersonalConnectionsPage() {
       ])
       toast.success(
         result.included
-          ? `Account included; imported ${result.imported} transactions`
+          ? 'Account included; importing up to three years in the background'
           : 'Account excluded from personal tracking',
       )
     },
