@@ -210,11 +210,49 @@ function PersonalConnectionsPage() {
                     </label>
                   ))}
                   {connection.accounts.length === 0 && (
-                    <p className="px-3 py-4 text-sm text-muted-foreground">
-                      No accounts were returned by this consent.
-                    </p>
+                    <div className="space-y-2 px-3 py-4 text-sm text-muted-foreground">
+                      <p>No accessible accounts were returned by this consent.</p>
+                      {connection.status !== 'pending' && connection.status !== 'disconnected' && (
+                        <>
+                          <p>
+                            For restricted production access, first link the account to the Hidden
+                            Village application in Enable Banking. Then use Add bank to reconnect
+                            and select at least one account.
+                          </p>
+                          <a
+                            className="inline-flex text-foreground underline underline-offset-4"
+                            href="https://enablebanking.com/sign-in/"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open Enable Banking
+                          </a>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
+                {connection.status === 'error' && connection.accounts.length === 0 && (
+                  <Button
+                    className="self-start"
+                    variant="outline"
+                    size="sm"
+                    disabled={startAuthorization.isPending}
+                    onClick={() =>
+                      startAuthorization.mutate({
+                        aspspName: connection.providerName,
+                        aspspCountry: connection.providerCountry,
+                        psuType: 'personal',
+                        workspaceKind: 'personal',
+                        replaceConnectionId: connection.id,
+                      })
+                    }
+                  >
+                    {startAuthorization.isPending
+                      ? 'Opening bank…'
+                      : `Reconnect ${connection.providerName}`}
+                  </Button>
+                )}
                 {connection.status !== 'disconnected' && (
                   <Button
                     className="self-start"

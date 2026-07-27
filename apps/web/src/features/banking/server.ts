@@ -2,12 +2,14 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
 import {
   createEnableBankingInternalId,
+  ENABLE_BANKING_NO_ACCOUNTS_ERROR,
   type EnableBankingAccount,
   enableBankingRequest,
   getEnableBankingAccountBalances,
   getEnableBankingAccountDetails,
   getEnableBankingAccountName,
   getEnableBankingAspsps,
+  getEnableBankingSessionAccounts,
   getEnableBankingTransactions,
   normalizeEnableBankingTransaction,
   pickEnableBankingBalance,
@@ -51,6 +53,7 @@ type StartEnableBankingAuthorizationInput = {
   psuType?: 'personal' | 'business'
   authMethod?: string
   workspaceKind?: WorkspaceKind
+  replaceConnectionId?: string
 }
 
 type CompleteEnableBankingAuthorizationInput = {
@@ -402,23 +405,38 @@ export const getPersonalConnections = createServerFn({ method: 'GET' })
       }),
     ])
 
-    return connections.map((connection) => ({
-      id: connection.id,
-      name: connection.name,
-      status: connection.status,
-      errorMessage: connection.errorMessage,
-      lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
-      consentValidUntil: connection.consentValidUntil?.toISOString() ?? null,
-      disconnectedAt: connection.disconnectedAt?.toISOString() ?? null,
-      accounts: accounts
-        .filter((account) => account.connectionId === connection.id)
-        .map((account) => ({
-          ...serializePersonalAccount(account),
-          included: account.included,
-          ibanSuffix: getPersonalAccountPayload(account).iban?.slice(-4) ?? null,
-          accountType: getPersonalAccountPayload(account).accountType,
-        })),
-    }))
+    return connections
+      .map((connection) => {
+        const connectionAccounts = accounts.filter(
+          (account) => account.connectionId === connection.id,
+        )
+        const authorizedWithoutAccounts =
+          connection.status === 'connected' && connectionAccounts.length === 0
+        const metadata = getEnableBankingConnectionMetadata(connection.rawMetadata)
+
+        return {
+          id: connection.id,
+          name: connection.name,
+          providerName: metadata?.aspsp?.name ?? connection.name.replace(/^Enable Banking /, ''),
+          providerCountry: metadata?.aspsp?.country ?? 'SE',
+          status: authorizedWithoutAccounts ? ('error' as const) : connection.status,
+          errorMessage: authorizedWithoutAccounts
+            ? ENABLE_BANKING_NO_ACCOUNTS_ERROR
+            : connection.errorMessage,
+          lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
+          consentValidUntil: connection.consentValidUntil?.toISOString() ?? null,
+          disconnectedAt: connection.disconnectedAt?.toISOString() ?? null,
+          accounts: connectionAccounts.map((account) => ({
+            ...serializePersonalAccount(account),
+            included: account.included,
+            ibanSuffix: getPersonalAccountPayload(account).iban?.slice(-4) ?? null,
+            accountType: getPersonalAccountPayload(account).accountType,
+          })),
+        }
+      })
+      .filter(
+        (connection) => connection.status !== 'disconnected' || connection.accounts.length > 0,
+      )
   })
 
 export const setPersonalAccountIncluded = createServerFn({ method: 'POST' })
@@ -1056,6 +1074,8 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
     const authMethod = data.authMethod?.trim()
     const body = {
       access: {
+        balances: true,
+        transactions: true,
         valid_until: new Date(
           Date.now() + (workspaceKind === 'personal' ? 179 : 89) * 24 * 60 * 60 * 1000,
         ).toISOString(),
@@ -1098,6 +1118,22 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
       method: 'POST',
       body,
     })
+
+    if (data.replaceConnectionId && workspaceKind === 'personal') {
+      await db
+        .update(bankConnection)
+        .set({
+          status: 'disconnected',
+          disconnectedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(bankConnection.id, data.replaceConnectionId),
+            eq(bankConnection.workspaceId, ownerWorkspace.id),
+          ),
+        )
+    }
 
     return {
       url: response.url,
@@ -1153,13 +1189,19 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
       },
     })
 
+    const responseAccounts = response.accounts ?? []
+    const authorizedAccounts =
+      responseAccounts.length > 0
+        ? responseAccounts
+        : await getEnableBankingSessionAccounts(response.session_id)
+    const hasAccounts = authorizedAccounts.length > 0
     const [connection] = await db
       .update(bankConnection)
       .set({
         providerConnectionId: response.session_id,
         name: `Enable Banking ${response.aspsp?.name ?? 'connection'}`,
-        status: 'connected',
-        errorMessage: null,
+        status: hasAccounts ? 'connected' : 'error',
+        errorMessage: hasAccounts ? null : ENABLE_BANKING_NO_ACCOUNTS_ERROR,
         rawMetadata:
           ownerWorkspace.kind === 'personal'
             ? {
@@ -1179,15 +1221,25 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
       .where(eq(bankConnection.id, pendingConnection.id))
       .returning()
 
+    if (!hasAccounts) {
+      return {
+        ok: false as const,
+        workspaceKind: ownerWorkspace.kind,
+        errorMessage: ENABLE_BANKING_NO_ACCOUNTS_ERROR,
+        syncedAccounts: 0,
+        syncedTransactions: 0,
+      }
+    }
+
     const synced = await syncEnableBankingConnection({
       workspaceId: ownerWorkspace.id,
       workspaceKind: ownerWorkspace.kind,
       connectionId: connection.id,
-      accounts: response.accounts,
+      accounts: authorizedAccounts,
     })
 
     return {
-      ok: true,
+      ok: true as const,
       workspaceKind: ownerWorkspace.kind,
       ...synced,
     }
@@ -1243,6 +1295,19 @@ function getPersonalAccountPayload(account: typeof bankAccount.$inferSelect) {
   }
 
   return decryptPersonalAccountPayload(account.encryptedPersonalPayload)
+}
+
+function getEnableBankingConnectionMetadata(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  return value as {
+    aspsp?: {
+      name?: string
+      country?: string
+    }
+  }
 }
 
 function serializePersonalTransaction(
