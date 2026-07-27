@@ -33,6 +33,8 @@ import { z } from 'zod'
 
 import { matchPendingAttachmentsTask } from './match-pending-attachments'
 
+const TRANSACTION_IMPORT_CONCURRENCY = 6
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,24 +327,34 @@ async function syncEnableBankingConnection({
       continue
     }
 
-    for (const transaction of transactions.map((item) =>
+    const normalizedTransactions = transactions.map((item) =>
       normalizeEnableBankingTransaction(item, {
         accountId: accountUid,
         fallbackCurrency: account.currency,
       }),
-    )) {
-      await upsertBankTransaction({
-        db,
-        workspaceId: connection.workspaceId,
-        connectionId: connection.id,
-        accountId: account.id,
-        providerAccountId: accountUid,
-        transaction,
-        workspaceKind: connectionWorkspace.kind,
-        now,
-      })
+    )
 
-      syncedTransactions += 1
+    for (
+      let offset = 0;
+      offset < normalizedTransactions.length;
+      offset += TRANSACTION_IMPORT_CONCURRENCY
+    ) {
+      const batch = normalizedTransactions.slice(offset, offset + TRANSACTION_IMPORT_CONCURRENCY)
+      await Promise.all(
+        batch.map((transaction) =>
+          upsertBankTransaction({
+            db,
+            workspaceId: connection.workspaceId,
+            connectionId: connection.id,
+            accountId: account.id,
+            providerAccountId: accountUid,
+            transaction,
+            workspaceKind: connectionWorkspace.kind,
+            now,
+          }),
+        ),
+      )
+      syncedTransactions += batch.length
     }
   }
 
