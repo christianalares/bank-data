@@ -38,7 +38,10 @@ export const Route = createFileRoute('/api/banking/enable-banking/callback')({
             result.workspaceKind === 'personal' ? '/personal/connections' : '/transactions',
             url.origin,
           )
-          redirectUrl.searchParams.set('enableBanking', 'connected')
+          redirectUrl.searchParams.set('enableBanking', result.ok ? 'connected' : 'error')
+          if (!result.ok) {
+            redirectUrl.searchParams.set('message', result.errorMessage)
+          }
           redirectUrl.searchParams.set('accounts', String(result.syncedAccounts))
           redirectUrl.searchParams.set('transactions', String(result.syncedTransactions))
         } catch (caughtError) {

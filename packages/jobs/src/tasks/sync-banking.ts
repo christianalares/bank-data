@@ -1,5 +1,6 @@
 import {
   createEnableBankingInternalId,
+  ENABLE_BANKING_NO_ACCOUNTS_ERROR,
   type EnableBankingAccount,
   getEnableBankingAccountBalances,
   getEnableBankingAccountDetails,
@@ -132,7 +133,7 @@ export const syncBankingTask = schemaTask({
 
         // Consent failures need a human to re-authorize; retrying is pointless.
         // Transient failures should surface as a failed run (alerting + retries).
-        if (status === 'error') {
+        if (status === 'error' && message !== ENABLE_BANKING_NO_ACCOUNTS_ERROR) {
           transientFailures.push({ connectionId: connection.id, message })
         }
       }
@@ -240,6 +241,10 @@ async function syncEnableBankingConnection({
           }
         })
       : await getEnableBankingSessionAccounts(connection.providerConnectionId)
+
+  if (localAccounts.length === 0 && accounts.length === 0) {
+    throw new Error(ENABLE_BANKING_NO_ACCOUNTS_ERROR)
+  }
 
   const now = new Date()
   let syncedTransactions = 0
