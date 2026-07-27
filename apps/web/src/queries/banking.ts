@@ -15,6 +15,40 @@ export const transactions = () =>
     queryFn: () => serverFns.banking.getTransactions(),
   })
 
+export const personalTransactions = (input: {
+  query?: string
+  accountId?: string
+  dateFrom?: string
+  dateTo?: string
+  limit?: number
+}) =>
+  queryOptions({
+    queryKey: ['banking', 'personal-transactions', input],
+    queryFn: () => serverFns.banking.getPersonalTransactions({ data: input }),
+  })
+
+export const personalConnections = () =>
+  queryOptions({
+    queryKey: ['banking', 'personal-connections'],
+    queryFn: () => serverFns.banking.getPersonalConnections(),
+  })
+
+export const personalMcpTokens = () =>
+  queryOptions({
+    queryKey: ['banking', 'personal-mcp-tokens'],
+    queryFn: () => serverFns.banking.getPersonalMcpTokens(),
+  })
+
+export const personalBankProviders = (country: string) =>
+  queryOptions({
+    queryKey: ['banking', 'personal-bank-providers', country],
+    queryFn: () =>
+      serverFns.banking.getPersonalBankProviders({
+        data: { country },
+      }),
+    staleTime: 1000 * 60 * 60,
+  })
+
 export const transactionAttachments = (transactionId: string) =>
   queryOptions({
     queryKey: ['banking', 'attachments', transactionId],

@@ -50,6 +50,7 @@ export const parsedInvoiceSchema = z.object({
 export type ParsedInvoice = z.infer<typeof parsedInvoiceSchema>
 
 export const timeEntrySource = pgEnum('time_entry_source', ['manual', 'timer'])
+export const workspaceKind = pgEnum('workspace_kind', ['business', 'personal'])
 export const attachmentStatus = pgEnum('attachment_status', [
   'unmatched',
   'suggested',
@@ -68,6 +69,17 @@ export const bankingConnectionStatus = pgEnum('banking_connection_status', [
   'disconnected',
 ])
 export const bankTransactionStatus = pgEnum('bank_transaction_status', ['booked', 'pending'])
+export const bankTransferState = pgEnum('bank_transfer_state', [
+  'ordinary',
+  'suggested',
+  'confirmed',
+  'dismissed',
+])
+export const personalSearchIndexStatus = pgEnum('personal_search_index_status', [
+  'pending',
+  'indexed',
+  'error',
+])
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -124,16 +136,21 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
-export const workspace = pgTable('workspace', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('name').notNull(),
-  ownerId: text('owner_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  baseCurrency: text('base_currency').notNull().default('SEK'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+export const workspace = pgTable(
+  'workspace',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    kind: workspaceKind('kind').notNull().default('business'),
+    ownerId: text('owner_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    baseCurrency: text('base_currency').notNull().default('SEK'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('workspace_owner_kind_idx').on(table.ownerId, table.kind)],
+)
 
 export const trackerProject = pgTable('tracker_project', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -192,7 +209,10 @@ export const bankConnection = pgTable(
     status: bankingConnectionStatus('status').notNull().default('pending'),
     errorMessage: text('error_message'),
     rawMetadata: jsonb('raw_metadata'),
+    encryptedPersonalPayload: text('encrypted_personal_payload'),
     lastSyncedAt: timestamp('last_synced_at'),
+    consentValidUntil: timestamp('consent_valid_until'),
+    disconnectedAt: timestamp('disconnected_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -223,6 +243,8 @@ export const bankAccount = pgTable(
     currentBalance: numeric('current_balance', { precision: 14, scale: 2 }),
     availableBalance: numeric('available_balance', { precision: 14, scale: 2 }),
     rawMetadata: jsonb('raw_metadata'),
+    encryptedPersonalPayload: text('encrypted_personal_payload'),
+    included: boolean('included').notNull().default(true),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -259,6 +281,13 @@ export const bankTransaction = pgTable(
     balanceAfterTransaction: numeric('balance_after_transaction', { precision: 14, scale: 2 }),
     note: text('note'),
     rawMetadata: jsonb('raw_metadata'),
+    encryptedPersonalPayload: text('encrypted_personal_payload'),
+    transferState: bankTransferState('transfer_state').notNull().default('ordinary'),
+    transferPairId: uuid('transfer_pair_id'),
+    transferConfidence: numeric('transfer_confidence', { precision: 5, scale: 4 }),
+    personalSearchStatus: personalSearchIndexStatus('personal_search_status'),
+    personalSearchIndexedAt: timestamp('personal_search_indexed_at'),
+    personalSearchError: text('personal_search_error'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -266,6 +295,64 @@ export const bankTransaction = pgTable(
     uniqueIndex('bank_transaction_internal_id_idx').on(table.internalId),
     index('bank_transaction_workspace_booked_idx').on(table.workspaceId, table.bookedAt),
     index('bank_transaction_account_booked_idx').on(table.accountId, table.bookedAt),
+    index('bank_transaction_transfer_pair_idx').on(table.workspaceId, table.transferPairId),
+  ],
+)
+
+export const personalTransactionSearchToken = pgTable(
+  'personal_transaction_search_token',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => bankTransaction.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'personal_transaction_search_token_pk',
+      columns: [table.transactionId, table.tokenHash],
+    }),
+    index('personal_transaction_search_token_lookup_idx').on(table.workspaceId, table.tokenHash),
+  ],
+)
+
+export const personalMcpToken = pgTable(
+  'personal_mcp_token',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    tokenPrefix: text('token_prefix').notNull(),
+    lastUsedAt: timestamp('last_used_at'),
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [index('personal_mcp_token_workspace_idx').on(table.workspaceId)],
+)
+
+export const personalMcpAudit = pgTable(
+  'personal_mcp_audit',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    tokenId: uuid('token_id')
+      .notNull()
+      .references(() => personalMcpToken.id, { onDelete: 'cascade' }),
+    toolName: text('tool_name').notNull(),
+    filterSummary: jsonb('filter_summary'),
+    resultCount: integer('result_count'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('personal_mcp_audit_workspace_created_idx').on(table.workspaceId, table.createdAt),
   ],
 )
 
@@ -324,6 +411,9 @@ export const attachmentSuggestionDismissal = pgTable(
 
 export const gmailConnection = pgTable('gmail_connection', {
   id: uuid('id').defaultRandom().primaryKey(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspace.id, { onDelete: 'cascade' }),
   email: text('email').notNull(),
   accessToken: text('access_token').notNull(),
   refreshToken: text('refresh_token'),

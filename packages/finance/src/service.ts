@@ -554,6 +554,7 @@ export class FinanceService {
 
   private async getWorkspaceId() {
     const ownerWorkspace = await this.db.query.workspace.findFirst({
+      where: (table, { eq }) => eq(table.kind, 'business'),
       columns: {
         id: true,
       },

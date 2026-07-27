@@ -29,6 +29,45 @@ export const startEnableBankingAuthorization = () =>
       }),
   })
 
+export const setPersonalAccountIncluded = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'setPersonalAccountIncluded'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.setPersonalAccountIncluded>) =>
+      serverFns.banking.setPersonalAccountIncluded({
+        data: input,
+      }),
+  })
+
+export const disconnectPersonalBankConnection = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'disconnectPersonalBankConnection'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.disconnectPersonalBankConnection>) =>
+      serverFns.banking.disconnectPersonalBankConnection({
+        data: input,
+      }),
+  })
+
+export const createPersonalMcpToken = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'createPersonalMcpToken'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.createPersonalMcpToken>) =>
+      serverFns.banking.createPersonalMcpToken({ data: input }),
+  })
+
+export const revokePersonalMcpToken = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'revokePersonalMcpToken'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.revokePersonalMcpToken>) =>
+      serverFns.banking.revokePersonalMcpToken({ data: input }),
+  })
+
+export const reviewPersonalTransfer = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'reviewPersonalTransfer'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.reviewPersonalTransfer>) =>
+      serverFns.banking.reviewPersonalTransfer({ data: input }),
+  })
+
 export const updateTransactionNote = () =>
   mutationOptions({
     mutationKey: ['banking', 'updateTransactionNote'],

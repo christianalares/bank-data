@@ -14,6 +14,8 @@ const pageTitles: Record<string, string> = {
   '/inbox': 'Inbox',
   '/exports': 'Exports',
   '/settings': 'Settings',
+  '/personal/transactions': 'Personal Transactions',
+  '/personal/connections': 'Personal Connections',
 }
 
 export function AppShell({ children }: { children?: ReactNode }) {

@@ -12,6 +12,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@bank-data/banking": "workspace:*",
     "@bank-data/db": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "zod": "^4.4.3"

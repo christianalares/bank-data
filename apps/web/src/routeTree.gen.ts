@@ -21,6 +21,8 @@ import { Route as ProtectedExportsRouteImport } from './routes/_protected/export
 import { Route as ApiGmailConnectRouteImport } from './routes/api/gmail/connect'
 import { Route as ApiGmailCallbackRouteImport } from './routes/api/gmail/callback'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ProtectedPersonalTransactionsRouteImport } from './routes/_protected/personal.transactions'
+import { Route as ProtectedPersonalConnectionsRouteImport } from './routes/_protected/personal.connections'
 import { Route as ApiBankingEnableBankingCallbackRouteImport } from './routes/api/banking/enable-banking/callback'
 
 const LoginRoute = LoginRouteImport.update({
@@ -82,6 +84,18 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProtectedPersonalTransactionsRoute =
+  ProtectedPersonalTransactionsRouteImport.update({
+    id: '/personal/transactions',
+    path: '/personal/transactions',
+    getParentRoute: () => ProtectedRoute,
+  } as any)
+const ProtectedPersonalConnectionsRoute =
+  ProtectedPersonalConnectionsRouteImport.update({
+    id: '/personal/connections',
+    path: '/personal/connections',
+    getParentRoute: () => ProtectedRoute,
+  } as any)
 const ApiBankingEnableBankingCallbackRoute =
   ApiBankingEnableBankingCallbackRouteImport.update({
     id: '/api/banking/enable-banking/callback',
@@ -98,6 +112,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof ProtectedSettingsRoute
   '/tracker': typeof ProtectedTrackerRoute
   '/transactions': typeof ProtectedTransactionsRoute
+  '/personal/connections': typeof ProtectedPersonalConnectionsRoute
+  '/personal/transactions': typeof ProtectedPersonalTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/gmail/callback': typeof ApiGmailCallbackRoute
   '/api/gmail/connect': typeof ApiGmailConnectRoute
@@ -112,6 +128,8 @@ export interface FileRoutesByTo {
   '/tracker': typeof ProtectedTrackerRoute
   '/transactions': typeof ProtectedTransactionsRoute
   '/': typeof ProtectedIndexRoute
+  '/personal/connections': typeof ProtectedPersonalConnectionsRoute
+  '/personal/transactions': typeof ProtectedPersonalTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/gmail/callback': typeof ApiGmailCallbackRoute
   '/api/gmail/connect': typeof ApiGmailConnectRoute
@@ -128,6 +146,8 @@ export interface FileRoutesById {
   '/_protected/tracker': typeof ProtectedTrackerRoute
   '/_protected/transactions': typeof ProtectedTransactionsRoute
   '/_protected/': typeof ProtectedIndexRoute
+  '/_protected/personal/connections': typeof ProtectedPersonalConnectionsRoute
+  '/_protected/personal/transactions': typeof ProtectedPersonalTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/gmail/callback': typeof ApiGmailCallbackRoute
   '/api/gmail/connect': typeof ApiGmailConnectRoute
@@ -144,6 +164,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tracker'
     | '/transactions'
+    | '/personal/connections'
+    | '/personal/transactions'
     | '/api/auth/$'
     | '/api/gmail/callback'
     | '/api/gmail/connect'
@@ -158,6 +180,8 @@ export interface FileRouteTypes {
     | '/tracker'
     | '/transactions'
     | '/'
+    | '/personal/connections'
+    | '/personal/transactions'
     | '/api/auth/$'
     | '/api/gmail/callback'
     | '/api/gmail/connect'
@@ -173,6 +197,8 @@ export interface FileRouteTypes {
     | '/_protected/tracker'
     | '/_protected/transactions'
     | '/_protected/'
+    | '/_protected/personal/connections'
+    | '/_protected/personal/transactions'
     | '/api/auth/$'
     | '/api/gmail/callback'
     | '/api/gmail/connect'
@@ -274,6 +300,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_protected/personal/transactions': {
+      id: '/_protected/personal/transactions'
+      path: '/personal/transactions'
+      fullPath: '/personal/transactions'
+      preLoaderRoute: typeof ProtectedPersonalTransactionsRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
+    '/_protected/personal/connections': {
+      id: '/_protected/personal/connections'
+      path: '/personal/connections'
+      fullPath: '/personal/connections'
+      preLoaderRoute: typeof ProtectedPersonalConnectionsRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
     '/api/banking/enable-banking/callback': {
       id: '/api/banking/enable-banking/callback'
       path: '/api/banking/enable-banking/callback'
@@ -292,6 +332,8 @@ interface ProtectedRouteChildren {
   ProtectedTrackerRoute: typeof ProtectedTrackerRoute
   ProtectedTransactionsRoute: typeof ProtectedTransactionsRoute
   ProtectedIndexRoute: typeof ProtectedIndexRoute
+  ProtectedPersonalConnectionsRoute: typeof ProtectedPersonalConnectionsRoute
+  ProtectedPersonalTransactionsRoute: typeof ProtectedPersonalTransactionsRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
@@ -302,6 +344,8 @@ const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedTrackerRoute: ProtectedTrackerRoute,
   ProtectedTransactionsRoute: ProtectedTransactionsRoute,
   ProtectedIndexRoute: ProtectedIndexRoute,
+  ProtectedPersonalConnectionsRoute: ProtectedPersonalConnectionsRoute,
+  ProtectedPersonalTransactionsRoute: ProtectedPersonalTransactionsRoute,
 }
 
 const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(

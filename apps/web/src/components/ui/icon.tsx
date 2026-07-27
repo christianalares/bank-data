@@ -2,11 +2,13 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronsUpDown,
   CreditCard,
   Download,
   ExternalLink,
   File,
   Inbox,
+  Landmark,
   LayoutDashboard,
   Link,
   ListChecks,
@@ -21,6 +23,7 @@ import {
   Trash2,
   Unlink,
   Upload,
+  WalletCards,
   X,
 } from 'lucide-react'
 
@@ -30,11 +33,13 @@ const icons = {
   check: Check,
   chevronLeft: ChevronLeft,
   chevronRight: ChevronRight,
+  chevronsUpDown: ChevronsUpDown,
   creditCard: CreditCard,
   download: Download,
   externalLink: ExternalLink,
   file: File,
   inbox: Inbox,
+  landmark: Landmark,
   layoutDashboard: LayoutDashboard,
   link: Link,
   listChecks: ListChecks,
@@ -48,6 +53,7 @@ const icons = {
   trash: Trash2,
   unlink: Unlink,
   upload: Upload,
+  walletCards: WalletCards,
   x: X,
 }
 
