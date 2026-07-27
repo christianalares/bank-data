@@ -38,3 +38,15 @@ Local Postgres is published on port `5433` to avoid colliding with a machine-lev
 on the default `5432` port.
 
 The Railway deployment will use the same environment contract as local development.
+
+## Personal semantic search
+
+The isolated Workers AI + Vectorize gateway lives in `infra/personal-search-worker`. Deploy it
+without adding Wrangler to the application workspace:
+
+```bash
+pnpm dlx wrangler@4 deploy --config infra/personal-search-worker/wrangler.jsonc
+```
+
+Its `PERSONAL_SEARCH_API_TOKEN` secret must match the web, MCP, and Trigger.dev production
+environments.
