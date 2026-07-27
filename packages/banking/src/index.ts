@@ -169,7 +169,7 @@ export async function getEnableBankingAccountBalances(accountId: string) {
  */
 export async function getEnableBankingTransactions(
   accountId: string,
-  options: { dateFrom: string },
+  options: { dateFrom: string; strategy?: 'default' | 'longest' },
 ) {
   const transactions: EnableBankingTransaction[] = []
   let continuationKey: string | undefined
@@ -177,7 +177,7 @@ export async function getEnableBankingTransactions(
   do {
     const params = new URLSearchParams({
       date_from: options.dateFrom,
-      strategy: 'default',
+      strategy: options.strategy ?? 'default',
       transaction_status: 'BOOK',
     })
 
