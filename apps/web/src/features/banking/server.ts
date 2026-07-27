@@ -9,7 +9,6 @@ import {
   getEnableBankingAccountName,
   getEnableBankingAspsps,
   getEnableBankingTransactions,
-  matchPersonalTransfers,
   normalizeEnableBankingTransaction,
   pickEnableBankingBalance,
   searchPersonalTransactionVectors,
@@ -31,8 +30,10 @@ import {
   personalTransactionSearchToken,
   tokenizePersonalSearchText,
 } from '@hidden-village/db'
+import type { syncBankingTask } from '@hidden-village/jobs'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
+import { tasks } from '@trigger.dev/sdk'
 import { and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 
 import { getOrCreateWorkspace, type WorkspaceKind } from '#/features/banking/shared'
@@ -440,7 +441,7 @@ export const setPersonalAccountIncluded = createServerFn({ method: 'POST' })
       .set({ included: data.included, updatedAt: new Date() })
       .where(and(eq(bankAccount.id, account.id), eq(bankAccount.workspaceId, personalWorkspace.id)))
 
-    let imported = 0
+    let queuedRunId: string | null = null
     if (data.included) {
       const duplicateAccounts = await db.query.bankAccount.findMany({
         where: (table, { and, eq, ne }) =>
@@ -467,14 +468,26 @@ export const setPersonalAccountIncluded = createServerFn({ method: 'POST' })
           )
       }
 
-      imported = await syncPersonalIncludedAccount({
-        workspaceId: personalWorkspace.id,
-        account,
-        historyDays: 3 * 366,
-      })
+      try {
+        const handle = await tasks.trigger<typeof syncBankingTask>('sync-banking', {
+          workspaceId: personalWorkspace.id,
+          accountId: account.id,
+          historyDays: 3 * 366,
+          overlapDays: 14,
+        })
+        queuedRunId = handle.id
+      } catch (error) {
+        await db
+          .update(bankAccount)
+          .set({ included: false, updatedAt: new Date() })
+          .where(
+            and(eq(bankAccount.id, account.id), eq(bankAccount.workspaceId, personalWorkspace.id)),
+          )
+        throw error
+      }
     }
 
-    return { ok: true, included: data.included, imported }
+    return { ok: true, included: data.included, queuedRunId }
   })
 
 export const disconnectPersonalBankConnection = createServerFn({ method: 'POST' })
@@ -903,83 +916,6 @@ async function syncEnableBankingConnection({
   }
 }
 
-async function syncPersonalIncludedAccount({
-  workspaceId,
-  account,
-  historyDays,
-}: {
-  workspaceId: string
-  account: typeof bankAccount.$inferSelect
-  historyDays: number
-}) {
-  const db = createDb()
-  const now = new Date()
-  const [details, balances, transactions] = await Promise.all([
-    getEnableBankingAccountDetails(account.providerAccountId).catch(() => null),
-    getEnableBankingAccountBalances(account.providerAccountId).catch(() => []),
-    getEnableBankingTransactions(account.providerAccountId, {
-      dateFrom: new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    }),
-  ])
-  const balance = pickEnableBankingBalance(balances)
-  const existingPayload = getPersonalAccountPayload(account)
-  const accountPayload = {
-    name: details ? getEnableBankingAccountName(details) : existingPayload.name,
-    iban: details?.account_id?.iban ?? existingPayload.iban,
-    accountType: details?.cash_account_type ?? existingPayload.accountType,
-    rawMetadata: { details, balances },
-  }
-
-  await db
-    .update(bankAccount)
-    .set({
-      name: 'Encrypted personal account',
-      iban: null,
-      currency: details?.currency ?? balance?.currency ?? account.currency,
-      accountType: null,
-      currentBalance: balance?.amount ?? account.currentBalance,
-      availableBalance: balance?.amount ?? account.availableBalance,
-      rawMetadata: null,
-      encryptedPersonalPayload: encryptPersonalAccountPayload(accountPayload),
-      updatedAt: now,
-    })
-    .where(and(eq(bankAccount.id, account.id), eq(bankAccount.workspaceId, workspaceId)))
-
-  for (const transaction of transactions.map((item) =>
-    normalizeEnableBankingTransaction(item, {
-      accountId: account.providerAccountId,
-      fallbackCurrency: account.currency,
-    }),
-  )) {
-    await upsertPersonalTransaction({
-      workspaceId,
-      connectionId: account.connectionId,
-      accountId: account.id,
-      providerAccountId: account.providerAccountId,
-      transaction,
-      now,
-    })
-  }
-
-  await matchPersonalTransfers({
-    db,
-    workspaceId,
-    since: new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000),
-  })
-
-  await db
-    .update(bankConnection)
-    .set({
-      status: 'connected',
-      errorMessage: null,
-      lastSyncedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(bankConnection.id, account.connectionId))
-
-  return transactions.length
-}
-
 async function upsertBusinessTransaction({
   workspaceId,
   connectionId,
@@ -1040,90 +976,6 @@ async function upsertBusinessTransaction({
         updatedAt: now,
       },
     })
-}
-
-async function upsertPersonalTransaction({
-  workspaceId,
-  connectionId,
-  accountId,
-  providerAccountId,
-  transaction,
-  now,
-}: {
-  workspaceId: string
-  connectionId: string
-  accountId: string
-  providerAccountId: string
-  transaction: NormalizedTransaction
-  now: Date
-}) {
-  const db = createDb()
-  const internalId = createEnableBankingInternalId(
-    workspaceId,
-    providerAccountId,
-    transaction.providerTransactionId,
-  )
-  const existing = await db.query.bankTransaction.findFirst({
-    where: (table, { eq }) => eq(table.internalId, internalId),
-  })
-  const existingPayload = existing ? getPersonalPayload(existing) : null
-  const payload = {
-    description: transaction.description,
-    merchantName: transaction.merchantName,
-    counterpartyName: transaction.counterpartyName,
-    note: null,
-    rawMetadata: transaction.rawMetadata,
-    merchantOverride: existingPayload?.merchantOverride ?? null,
-    noteOverride: existingPayload?.noteOverride ?? null,
-  }
-  const [stored] = await db
-    .insert(bankTransaction)
-    .values({
-      workspaceId,
-      connectionId,
-      accountId,
-      provider: 'enable_banking',
-      providerTransactionId: transaction.providerTransactionId,
-      internalId,
-      status: transaction.status,
-      bookedAt: transaction.bookedAt,
-      valueAt: transaction.valueAt,
-      amount: transaction.amount,
-      currency: transaction.currency,
-      description: 'Encrypted personal transaction',
-      merchantName: null,
-      counterpartyName: null,
-      balanceAfterTransaction: transaction.balanceAfterTransaction,
-      note: null,
-      rawMetadata: null,
-      encryptedPersonalPayload: encryptPersonalTransactionPayload(payload),
-      personalSearchStatus: 'pending',
-      personalSearchIndexedAt: null,
-      personalSearchError: null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: bankTransaction.internalId,
-      set: {
-        accountId,
-        connectionId,
-        status: transaction.status,
-        bookedAt: transaction.bookedAt,
-        valueAt: transaction.valueAt,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        balanceAfterTransaction: transaction.balanceAfterTransaction,
-        encryptedPersonalPayload: encryptPersonalTransactionPayload(payload),
-        personalSearchStatus: 'pending',
-        personalSearchIndexedAt: null,
-        personalSearchError: null,
-        updatedAt: now,
-      },
-    })
-    .returning()
-
-  await indexPersonalTransaction(stored, payload)
 }
 
 async function indexPersonalTransaction(

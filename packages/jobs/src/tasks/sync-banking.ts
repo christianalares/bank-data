@@ -38,6 +38,14 @@ import { matchPendingAttachmentsTask } from './match-pending-attachments'
 
 const syncBankingPayloadSchema = z.object({
   overlapDays: z.number().int().positive().optional().default(14),
+  workspaceId: z.string().uuid().optional(),
+  accountId: z.string().uuid().optional(),
+  historyDays: z
+    .number()
+    .int()
+    .positive()
+    .max(3 * 366)
+    .optional(),
 })
 
 export type SyncBankingPayload = z.infer<typeof syncBankingPayloadSchema>
@@ -49,6 +57,7 @@ export type SyncBankingPayload = z.infer<typeof syncBankingPayloadSchema>
 export const syncBankingTask = schemaTask({
   id: 'sync-banking',
   schema: syncBankingPayloadSchema,
+  maxDuration: 1_800,
   run: async (payload) => {
     const db = createDb()
     const overlapDays = payload.overlapDays
@@ -56,12 +65,36 @@ export const syncBankingTask = schemaTask({
     // self-heals on the next run. Genuine consent failures are moved to
     // `disconnected` (see the catch block) and require manual re-authorization,
     // so they are intentionally excluded here.
-    const connections = await db.query.bankConnection.findMany({
+    const allConnections = await db.query.bankConnection.findMany({
       where: (table, { and, eq, inArray }) =>
         and(eq(table.provider, 'enable_banking'), inArray(table.status, ['connected', 'error'])),
     })
+    const targetAccount = payload.accountId
+      ? await db.query.bankAccount.findFirst({
+          where: (table, { eq }) => eq(table.id, payload.accountId as string),
+        })
+      : null
+
+    if (
+      payload.accountId &&
+      (!targetAccount ||
+        !targetAccount.included ||
+        (payload.workspaceId && targetAccount.workspaceId !== payload.workspaceId))
+    ) {
+      throw new Error('Included personal account was not found for the requested history import')
+    }
+
+    const connections = allConnections.filter(
+      (connection) =>
+        (!payload.workspaceId || connection.workspaceId === payload.workspaceId) &&
+        (!targetAccount || connection.id === targetAccount.connectionId),
+    )
 
     if (connections.length === 0) {
+      if (payload.accountId || payload.workspaceId) {
+        throw new Error('No syncable Enable Banking connection found for the requested import')
+      }
+
       logger.info('No syncable Enable Banking connections found; nothing to sync.')
     }
 
@@ -71,7 +104,13 @@ export const syncBankingTask = schemaTask({
 
     for (const connection of connections) {
       try {
-        const result = await syncEnableBankingConnection({ db, connection, overlapDays })
+        const result = await syncEnableBankingConnection({
+          db,
+          connection,
+          overlapDays,
+          targetAccountId: payload.accountId,
+          historyDays: payload.historyDays,
+        })
         syncedAccounts += result.syncedAccounts
         syncedTransactions += result.syncedTransactions
       } catch (caughtError) {
@@ -156,10 +195,14 @@ async function syncEnableBankingConnection({
   db,
   connection,
   overlapDays,
+  targetAccountId,
+  historyDays,
 }: {
   db: Database
   connection: typeof bankConnection.$inferSelect
   overlapDays: number
+  targetAccountId?: string
+  historyDays?: number
 }) {
   const connectionWorkspace = await db.query.workspace.findFirst({
     where: (table, { eq }) => eq(table.id, connection.workspaceId),
@@ -169,11 +212,17 @@ async function syncEnableBankingConnection({
     throw new Error('Bank connection workspace not found')
   }
 
+  if (targetAccountId && connectionWorkspace.kind !== 'personal') {
+    throw new Error('History imports can only target personal bank accounts')
+  }
+
   const localAccounts = await db.query.bankAccount.findMany({
     where: (table, { eq }) => eq(table.connectionId, connection.id),
   })
   const includedLocalAccounts = localAccounts.filter(
-    (account) => connectionWorkspace.kind === 'business' || account.included,
+    (account) =>
+      (connectionWorkspace.kind === 'business' || account.included) &&
+      (!targetAccountId || account.id === targetAccountId),
   )
   const accounts: EnableBankingAccount[] =
     localAccounts.length > 0
@@ -206,7 +255,9 @@ async function syncEnableBankingConnection({
       getEnableBankingAccountDetails(accountUid).catch(() => enableBankingAccount),
       getEnableBankingAccountBalances(accountUid).catch(() => []),
       getEnableBankingTransactions(accountUid, {
-        dateFrom: getDateFrom(connection.lastSyncedAt, overlapDays),
+        dateFrom: historyDays
+          ? new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+          : getDateFrom(connection.lastSyncedAt, overlapDays),
       }),
     ])
 
