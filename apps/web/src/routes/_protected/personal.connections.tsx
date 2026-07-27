@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { PencilIcon } from 'lucide-react'
 import type { FormEvent } from 'react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-
+import { pushSheet } from '#/components/sheets'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '#/components/ui/card'
@@ -180,11 +181,7 @@ function PersonalConnectionsPage() {
                 )}
                 <div className="divide-y border">
                   {connection.accounts.map((account) => (
-                    <label
-                      key={account.id}
-                      htmlFor={`personal-account-${account.id}`}
-                      className="flex cursor-pointer items-center gap-3 px-3 py-3"
-                    >
+                    <div key={account.id} className="flex items-center gap-3 px-3 py-3">
                       <Checkbox
                         id={`personal-account-${account.id}`}
                         checked={account.included}
@@ -196,21 +193,33 @@ function PersonalConnectionsPage() {
                           })
                         }
                       />
-                      <span className="min-w-0 flex-1">
+                      <label
+                        htmlFor={`personal-account-${account.id}`}
+                        className="min-w-0 flex-1 cursor-pointer"
+                      >
                         <span className="block truncate text-sm font-medium">{account.name}</span>
                         <span className="block text-xs text-muted-foreground">
                           {account.currency}
                           {account.ibanSuffix ? ` · •••• ${account.ibanSuffix}` : ''}
                           {account.accountType ? ` · ${account.accountType}` : ''}
                         </span>
-                      </span>
+                      </label>
                       <span className="text-sm font-medium">
                         {formatMoney(account.currentBalance, account.currency)}
                       </span>
-                    </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => pushSheet('personalAccount', { account })}
+                      >
+                        <PencilIcon data-icon="inline-start" />
+                        Rename
+                      </Button>
+                    </div>
                   ))}
                   {connection.accounts.length === 0 && (
-                    <div className="space-y-2 px-3 py-4 text-sm text-muted-foreground">
+                    <div className="flex flex-col gap-2 px-3 py-4 text-sm text-muted-foreground">
                       <p>No accessible accounts were returned by this consent.</p>
                       {connection.status !== 'pending' && connection.status !== 'disconnected' && (
                         <>

@@ -7,6 +7,7 @@ import {
   type Database,
   decryptPersonalAccountPayload,
   decryptPersonalTransactionPayload,
+  getPersonalAccountDisplayName,
   personalTransactionSearchToken,
   tokenizePersonalSearchText,
 } from '@hidden-village/db'
@@ -44,7 +45,7 @@ export class PersonalFinanceService {
 
         return {
           id: account.id,
-          name: payload.name,
+          name: getPersonalAccountDisplayName(payload),
           currency: account.currency,
           currentBalance: account.currentBalance,
           availableBalance: account.availableBalance,
@@ -102,7 +103,7 @@ export class PersonalFinanceService {
     return {
       transactions: pageRows.map(({ transaction, accountName, accountEncryptedPayload }) => {
         const resolvedAccountName = accountEncryptedPayload
-          ? decryptPersonalAccountPayload(accountEncryptedPayload).name
+          ? getPersonalAccountDisplayName(decryptPersonalAccountPayload(accountEncryptedPayload))
           : accountName
 
         return serializePersonalTransaction(transaction, resolvedAccountName)

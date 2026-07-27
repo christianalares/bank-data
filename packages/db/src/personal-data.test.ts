@@ -6,6 +6,7 @@ import {
   decryptPersonalTransactionPayload,
   encryptPersonalAccountPayload,
   encryptPersonalTransactionPayload,
+  getPersonalAccountDisplayName,
   tokenizePersonalSearchText,
 } from './personal-data'
 
@@ -45,6 +46,21 @@ describe('personal data protection', () => {
     expect(encryptedAccount).not.toContain('SE123456789')
     expect(decryptPersonalTransactionPayload(encryptedTransaction)).toEqual(transaction)
     expect(decryptPersonalAccountPayload(encryptedAccount)).toEqual(account)
+  })
+
+  it('uses an encrypted account alias when one is present', () => {
+    const account = {
+      name: 'Bank-provided account',
+      nameOverride: 'Daily spending',
+      iban: 'SE123456789',
+      accountType: 'CACC',
+      rawMetadata: { private: true },
+    }
+
+    expect(getPersonalAccountDisplayName(account)).toBe('Daily spending')
+    expect(getPersonalAccountDisplayName({ ...account, nameOverride: '  ' })).toBe(
+      'Bank-provided account',
+    )
   })
 
   it('creates deterministic blind search tokens from normalized words', () => {

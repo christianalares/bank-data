@@ -28,6 +28,7 @@ import {
   encryptPersonalAccountPayload,
   encryptPersonalProviderPayload,
   encryptPersonalTransactionPayload,
+  getPersonalAccountDisplayName,
   personalMcpToken,
   personalTransactionSearchToken,
   tokenizePersonalSearchText,
@@ -89,6 +90,11 @@ type SetPersonalAccountIncludedInput = {
   included: boolean
 }
 
+type UpdatePersonalAccountNameInput = {
+  accountId: string
+  name: string | null
+}
+
 type BankProvidersInput = {
   country?: string
 }
@@ -134,23 +140,28 @@ export const updateTransactionNote = createServerFn({ method: 'POST' })
       throw new Error('Transaction not found')
     }
 
-    const values =
-      workspaceKind === 'personal'
-        ? {
-            encryptedPersonalPayload: encryptPersonalTransactionPayload({
-              ...getPersonalPayload(current),
-              noteOverride: data.note?.trim() || null,
-              merchantOverride: data.merchantOverride?.trim() || null,
-            }),
-            personalSearchStatus: 'pending' as const,
-            personalSearchIndexedAt: null,
-            personalSearchError: null,
-            updatedAt: new Date(),
-          }
-        : {
-            note: data.note,
-            updatedAt: new Date(),
-          }
+    const currentPersonalPayload = workspaceKind === 'personal' ? getPersonalPayload(current) : null
+    const requestedMerchantOverride = data.merchantOverride?.trim() || null
+    const merchantOverride =
+      requestedMerchantOverride === currentPersonalPayload?.merchantName
+        ? null
+        : requestedMerchantOverride
+    const values = currentPersonalPayload
+      ? {
+          encryptedPersonalPayload: encryptPersonalTransactionPayload({
+            ...currentPersonalPayload,
+            noteOverride: data.note?.trim() || null,
+            merchantOverride,
+          }),
+          personalSearchStatus: 'pending' as const,
+          personalSearchIndexedAt: null,
+          personalSearchError: null,
+          updatedAt: new Date(),
+        }
+      : {
+          note: data.note,
+          updatedAt: new Date(),
+        }
 
     const [updated] = await db
       .update(bankTransaction)
@@ -368,9 +379,11 @@ export const getPersonalTransactions = createServerFn({ method: 'GET' })
       orderBy: (table) => [desc(table.bookedAt), desc(table.createdAt)],
       limit,
     })
-    const accountById = new Map(includedAccounts.map((account) => [account.id, account]))
+    const accountNameById = new Map(
+      includedAccounts.map((account) => [account.id, serializePersonalAccount(account).name]),
+    )
     const transactions = rows.map((row) =>
-      serializePersonalTransaction(row, accountById.get(row.accountId)?.name ?? 'Unknown account'),
+      serializePersonalTransaction(row, accountNameById.get(row.accountId) ?? 'Unknown account'),
     )
 
     if (query) {
@@ -506,6 +519,44 @@ export const setPersonalAccountIncluded = createServerFn({ method: 'POST' })
     }
 
     return { ok: true, included: data.included, queuedRunId }
+  })
+
+export const updatePersonalAccountName = createServerFn({ method: 'POST' })
+  .inputValidator((input: UpdatePersonalAccountNameInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const account = await db.query.bankAccount.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.accountId), eq(table.workspaceId, personalWorkspace.id)),
+    })
+
+    if (!account?.encryptedPersonalPayload) {
+      throw new Error('Personal bank account not found')
+    }
+
+    const requestedName = data.name?.trim() || null
+    if (requestedName && requestedName.length > 100) {
+      throw new Error('Account name must be 100 characters or fewer')
+    }
+
+    const payload = decryptPersonalAccountPayload(account.encryptedPersonalPayload)
+    const nameOverride = requestedName === payload.name ? null : requestedName
+    const encryptedPersonalPayload = encryptPersonalAccountPayload({
+      ...payload,
+      nameOverride,
+    })
+
+    await db
+      .update(bankAccount)
+      .set({ encryptedPersonalPayload, updatedAt: new Date() })
+      .where(and(eq(bankAccount.id, account.id), eq(bankAccount.workspaceId, personalWorkspace.id)))
+
+    return {
+      ok: true,
+      name: getPersonalAccountDisplayName({ ...payload, nameOverride }),
+    }
   })
 
 export const disconnectPersonalBankConnection = createServerFn({ method: 'POST' })
@@ -834,19 +885,30 @@ async function syncEnableBankingConnection({
       continue
     }
 
-    const [details, balances] = await Promise.all([
+    const [details, balances, existingPersonalAccount] = await Promise.all([
       getEnableBankingAccountDetails(accountUid).catch(() => enableBankingAccount),
       getEnableBankingAccountBalances(accountUid).catch(() => []),
+      workspaceKind === 'personal'
+        ? db.query.bankAccount.findFirst({
+            where: (table, { and, eq }) =>
+              and(eq(table.workspaceId, workspaceId), eq(table.providerAccountId, accountUid)),
+            orderBy: (table) => [desc(table.updatedAt)],
+          })
+        : Promise.resolve(undefined),
     ])
     const accountDetails = {
       ...enableBankingAccount,
       ...details,
     }
     const balance = pickEnableBankingBalance(balances)
+    const existingPersonalPayload = existingPersonalAccount?.encryptedPersonalPayload
+      ? decryptPersonalAccountPayload(existingPersonalAccount.encryptedPersonalPayload)
+      : null
     const personalAccountPayload =
       workspaceKind === 'personal'
         ? {
             name: getEnableBankingAccountName(accountDetails),
+            nameOverride: existingPersonalPayload?.nameOverride ?? null,
             iban: accountDetails.account_id?.iban ?? null,
             accountType: accountDetails.cash_account_type ?? null,
             rawMetadata: { details: accountDetails, balances },
@@ -1276,7 +1338,9 @@ function serializePersonalAccount(account: typeof bankAccount.$inferSelect) {
 
   return {
     id: account.id,
-    name: payload.name,
+    name: getPersonalAccountDisplayName(payload),
+    originalName: payload.name,
+    nameOverride: payload.nameOverride ?? null,
     currency: account.currency,
     currentBalance: account.currentBalance,
     availableBalance: account.availableBalance,
@@ -1328,7 +1392,9 @@ function serializePersonalTransaction(
     originalMerchantName: payload.merchantName,
     counterpartyName: payload.counterpartyName,
     note: payload.noteOverride ?? payload.note,
+    merchantOverride: payload.merchantOverride ?? null,
     status: transaction.status,
+    balanceAfterTransaction: transaction.balanceAfterTransaction,
     transferState: transaction.transferState,
     transferPairId: transaction.transferPairId,
     transferConfidence: transaction.transferConfidence,
