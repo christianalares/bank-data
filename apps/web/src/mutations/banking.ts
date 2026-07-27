@@ -38,6 +38,15 @@ export const setPersonalAccountIncluded = () =>
       }),
   })
 
+export const updatePersonalAccountName = () =>
+  mutationOptions({
+    mutationKey: ['banking', 'updatePersonalAccountName'],
+    mutationFn: (input: ServerFnInput<typeof serverFns.banking.updatePersonalAccountName>) =>
+      serverFns.banking.updatePersonalAccountName({
+        data: input,
+      }),
+  })
+
 export const disconnectPersonalBankConnection = () =>
   mutationOptions({
     mutationKey: ['banking', 'disconnectPersonalBankConnection'],

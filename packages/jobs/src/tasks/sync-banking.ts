@@ -271,10 +271,17 @@ async function syncEnableBankingConnection({
 
     const accountDetails = { ...enableBankingAccount, ...details }
     const balance = pickEnableBankingBalance(balances)
+    const existingPersonalAccount = localAccounts.find(
+      (account) => account.providerAccountId === accountUid,
+    )
+    const existingPersonalPayload = existingPersonalAccount?.encryptedPersonalPayload
+      ? decryptPersonalAccountPayload(existingPersonalAccount.encryptedPersonalPayload)
+      : null
     const personalAccountPayload =
       connectionWorkspace.kind === 'personal'
         ? {
             name: getEnableBankingAccountName(accountDetails),
+            nameOverride: existingPersonalPayload?.nameOverride ?? null,
             iban: accountDetails.account_id?.iban ?? null,
             accountType: accountDetails.cash_account_type ?? null,
             rawMetadata: { details: accountDetails, balances },

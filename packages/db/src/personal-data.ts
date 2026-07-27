@@ -15,6 +15,7 @@ export type PersonalTransactionPayload = {
 
 export type PersonalAccountPayload = {
   name: string
+  nameOverride?: string | null
   iban: string | null
   accountType: string | null
   rawMetadata: unknown
@@ -57,6 +58,12 @@ export function decryptPersonalTransactionPayload(ciphertext: string): PersonalT
 
 export function decryptPersonalAccountPayload(ciphertext: string): PersonalAccountPayload {
   return decryptPersonalPayload(ciphertext) as PersonalAccountPayload
+}
+
+export function getPersonalAccountDisplayName(
+  payload: Pick<PersonalAccountPayload, 'name' | 'nameOverride'>,
+) {
+  return payload.nameOverride?.trim() || payload.name
 }
 
 function decryptPersonalPayload(ciphertext: string) {

@@ -30,5 +30,6 @@ export {
   revokePersonalMcpToken,
   setPersonalAccountIncluded,
   startEnableBankingAuthorization,
+  updatePersonalAccountName,
   updateTransactionNote,
 } from '#/features/banking/server'

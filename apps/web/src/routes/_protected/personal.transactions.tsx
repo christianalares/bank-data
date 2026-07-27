@@ -1,82 +1,109 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDebouncedCallback } from '@tanstack/react-pacer'
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { type ColumnSizingState, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { PencilIcon } from 'lucide-react'
 import type { FormEvent } from 'react'
-import { useState } from 'react'
-import { toast } from 'sonner'
+import { useCallback, useMemo, useState } from 'react'
 
-import { Badge } from '#/components/ui/badge'
+import { pushSheet } from '#/components/sheets'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
+import { DataTable } from '#/components/ui/data-table'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '#/components/ui/empty'
+import { Field, FieldGroup, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
+import { MonthPicker } from '#/components/ui/month-picker'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '#/components/ui/select'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#/components/ui/table'
-import { Textarea } from '#/components/ui/textarea'
-import { mutations } from '#/mutations'
+  getPersonalTransactionColumnSizing,
+  savePersonalTransactionColumnSizing,
+} from '#/features/banking/column-sizing'
+import {
+  createPersonalTransactionColumns,
+  type PersonalTransactionRow,
+} from '#/features/banking/personal-transaction-columns'
 import { queries } from '#/queries'
 
 const ALL_ACCOUNTS = 'all'
 
 export const Route = createFileRoute('/_protected/personal/transactions')({
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(queries.banking.personalTransactions({ limit: 200 }))
+    const [, columnSizing] = await Promise.all([
+      context.queryClient.ensureQueryData(queries.banking.personalTransactions({ limit: 500 })),
+      getPersonalTransactionColumnSizing(),
+    ])
+
+    return { columnSizing }
   },
   component: PersonalTransactionsPage,
 })
 
 function PersonalTransactionsPage() {
-  const queryClient = useQueryClient()
+  const { columnSizing: initialColumnSizing } = Route.useLoaderData()
   const [draftQuery, setDraftQuery] = useState('')
   const [query, setQuery] = useState('')
   const [accountId, setAccountId] = useState(ALL_ACCOUNTS)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [editing, setEditing] = useState<{
-    transactionId: string
-    merchantOverride: string
-    note: string
-  } | null>(null)
+  const [month, setMonth] = useState<Date | null>(null)
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(initialColumnSizing)
+  const dateRange = getMonthRange(month)
   const result = useQuery(
     queries.banking.personalTransactions({
       query: query || undefined,
       accountId: accountId === ALL_ACCOUNTS ? undefined : accountId,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
+      dateFrom: dateRange?.dateFrom,
+      dateTo: dateRange?.dateTo,
       limit: 500,
     }),
   )
   const data = result.data
-  const updateAnnotation = useMutation({
-    ...mutations.banking.updateTransactionNote(),
-    onSuccess: async () => {
-      setEditing(null)
-      await queryClient.invalidateQueries({ queryKey: ['banking', 'personal-transactions'] })
-      toast.success('Personal transaction updated')
-    },
+  const columns = useMemo(
+    () =>
+      createPersonalTransactionColumns({
+        onEdit: (transaction) => pushSheet('personalTransaction', { transaction }),
+      }),
+    [],
+  )
+  const debouncedSave = useDebouncedCallback(savePersonalTransactionColumnSizing, {
+    wait: 300,
   })
-  const reviewTransfer = useMutation({
-    ...mutations.banking.reviewPersonalTransfer(),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['banking', 'personal-transactions'] })
-      toast.success('Transfer review saved')
+  const handleColumnSizingChange = useCallback(
+    (updater: ColumnSizingState | ((previous: ColumnSizingState) => ColumnSizingState)) => {
+      setColumnSizing((previous) => {
+        const next = typeof updater === 'function' ? updater(previous) : updater
+        debouncedSave(next)
+        return next
+      })
     },
+    [debouncedSave],
+  )
+  const table = useReactTable({
+    data: (data?.transactions ?? []) as PersonalTransactionRow[],
+    columns,
+    columnResizeMode: 'onChange',
+    getCoreRowModel: getCoreRowModel(),
+    state: { columnSizing },
+    onColumnSizingChange: handleColumnSizingChange,
+    getRowId: (row) => row.id,
   })
 
-  function handleSearch(event: FormEvent) {
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setQuery(draftQuery.trim())
+  }
+
+  function clearFilters() {
+    setDraftQuery('')
+    setQuery('')
+    setAccountId(ALL_ACCOUNTS)
+    setMonth(null)
   }
 
   return (
@@ -93,7 +120,18 @@ function PersonalTransactionsPage() {
           {data.accounts.map((account) => (
             <Card key={account.id}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{account.name}</CardTitle>
+                <div className="flex items-start gap-2">
+                  <CardTitle className="min-w-0 flex-1 truncate text-sm">{account.name}</CardTitle>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Rename ${account.name}`}
+                    onClick={() => pushSheet('personalAccount', { account })}
+                  >
+                    <PencilIcon data-icon="inline-start" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-xl font-semibold">
@@ -107,237 +145,111 @@ function PersonalTransactionsPage() {
           ))}
         </div>
       ) : (
-        <Card>
-          <CardContent className="py-8 text-sm text-muted-foreground">
-            Connect a bank and include at least one account from Personal Connections.
-          </CardContent>
-        </Card>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>No personal accounts included</EmptyTitle>
+            <EmptyDescription>
+              Connect a bank and include at least one account from Personal Connections.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
-      <form className="flex flex-wrap items-end gap-2" onSubmit={handleSearch}>
-        <Input
-          className="w-72"
-          placeholder="Search merchants or concepts…"
-          value={draftQuery}
-          onChange={(event) => setDraftQuery(event.target.value)}
-        />
-        <Select value={accountId} onValueChange={setAccountId}>
-          <SelectTrigger className="w-52">
-            <SelectValue placeholder="All accounts" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_ACCOUNTS}>All accounts</SelectItem>
-            {data?.accounts.map((account) => (
-              <SelectItem key={account.id} value={account.id}>
-                {account.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          className="w-40"
-          type="date"
-          value={dateFrom}
-          aria-label="From date"
-          onChange={(event) => setDateFrom(event.target.value)}
-        />
-        <Input
-          className="w-40"
-          type="date"
-          value={dateTo}
-          aria-label="To date"
-          onChange={(event) => setDateTo(event.target.value)}
-        />
-        <Button type="submit" variant="outline">
-          Search
-        </Button>
-        {(query || dateFrom || dateTo || accountId !== ALL_ACCOUNTS) && (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setDraftQuery('')
-              setQuery('')
-              setAccountId(ALL_ACCOUNTS)
-              setDateFrom('')
-              setDateTo('')
-            }}
-          >
-            Clear
-          </Button>
-        )}
-        {result.isFetching && <span className="text-xs text-muted-foreground">Refreshing…</span>}
+      <form onSubmit={handleSearch}>
+        <FieldGroup className="flex-row flex-wrap items-end gap-2">
+          <Field className="w-72">
+            <FieldLabel className="sr-only" htmlFor="personal-transaction-search">
+              Search transactions
+            </FieldLabel>
+            <Input
+              id="personal-transaction-search"
+              placeholder="Search merchants or concepts…"
+              value={draftQuery}
+              onChange={(event) => setDraftQuery(event.target.value)}
+            />
+          </Field>
+          <Field className="w-52">
+            <FieldLabel className="sr-only" htmlFor="personal-account-filter">
+              Account
+            </FieldLabel>
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger id="personal-account-filter" className="w-full">
+                <SelectValue placeholder="All accounts" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={ALL_ACCOUNTS}>All accounts</SelectItem>
+                  {data?.accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field className="w-auto">
+            <FieldLabel className="sr-only">Month</FieldLabel>
+            <MonthPicker value={month} onChange={setMonth} />
+          </Field>
+          <Field orientation="horizontal" className="w-auto">
+            <Button type="submit" variant="outline">
+              Search
+            </Button>
+            {query || month || accountId !== ALL_ACCOUNTS ? (
+              <Button type="button" variant="ghost" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </Field>
+          {result.isFetching ? (
+            <span className="pb-2 text-xs text-muted-foreground">Refreshing…</span>
+          ) : null}
+        </FieldGroup>
       </form>
 
-      {editing && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Edit transaction</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="grid gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]"
-              onSubmit={(event) => {
-                event.preventDefault()
-                updateAnnotation.mutate({
-                  transactionId: editing.transactionId,
-                  merchantOverride: editing.merchantOverride || null,
-                  note: editing.note || null,
-                  workspaceKind: 'personal',
-                })
-              }}
-            >
-              <Input
-                aria-label="Merchant name"
-                placeholder="Merchant name"
-                value={editing.merchantOverride}
-                onChange={(event) =>
-                  setEditing((current) =>
-                    current ? { ...current, merchantOverride: event.target.value } : null,
-                  )
-                }
-              />
-              <Textarea
-                aria-label="Personal note"
-                placeholder="Private note"
-                value={editing.note}
-                onChange={(event) =>
-                  setEditing((current) =>
-                    current ? { ...current, note: event.target.value } : null,
-                  )
-                }
-              />
-              <div className="flex gap-2">
-                <Button type="submit" disabled={updateAnnotation.isPending}>
-                  Save
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+      {data && data.transactions.length > 0 ? (
+        <DataTable
+          table={table}
+          onRowClick={(transaction) => pushSheet('personalTransaction', { transaction })}
+        />
+      ) : (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>No matching transactions</EmptyTitle>
+            <EmptyDescription>Try another search, account, or month.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
-      <div className="overflow-hidden border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Merchant / description</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="w-36" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data?.transactions.map((transaction) => (
-              <TableRow key={transaction.id}>
-                <TableCell className="whitespace-nowrap">
-                  {formatDate(transaction.bookedAt)}
-                </TableCell>
-                <TableCell>
-                  <p className="font-medium">
-                    {transaction.merchantName ??
-                      transaction.counterpartyName ??
-                      transaction.description}
-                  </p>
-                  {(transaction.merchantName || transaction.counterpartyName) && (
-                    <p className="max-w-2xl truncate text-xs text-muted-foreground">
-                      {transaction.description}
-                    </p>
-                  )}
-                  {transaction.note && (
-                    <p className="mt-1 text-xs text-muted-foreground">{transaction.note}</p>
-                  )}
-                </TableCell>
-                <TableCell>{transaction.accountName}</TableCell>
-                <TableCell>
-                  {transaction.transferState !== 'ordinary' ? (
-                    <Badge variant="outline">
-                      {transaction.transferState === 'confirmed'
-                        ? 'Internal transfer'
-                        : 'Possible transfer'}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Booked</span>
-                  )}
-                </TableCell>
-                <TableCell
-                  className={`whitespace-nowrap text-right font-medium ${
-                    Number(transaction.amount) > 0 ? 'text-green-600' : ''
-                  }`}
-                >
-                  {formatMoney(transaction.amount, transaction.currency)}
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    {transaction.transferState === 'suggested' && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={reviewTransfer.isPending}
-                          onClick={() =>
-                            reviewTransfer.mutate({
-                              transactionId: transaction.id,
-                              action: 'confirm',
-                            })
-                          }
-                        >
-                          Transfer
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={reviewTransfer.isPending}
-                          onClick={() =>
-                            reviewTransfer.mutate({
-                              transactionId: transaction.id,
-                              action: 'dismiss',
-                            })
-                          }
-                        >
-                          Not
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          transactionId: transaction.id,
-                          merchantOverride: transaction.merchantName ?? '',
-                          note: transaction.note ?? '',
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-            {data && data.transactions.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="h-28 text-center text-muted-foreground">
-                  No matching transactions.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      {data?.transactions.length === 500 && (
+      {data?.transactions.length === 500 ? (
         <p className="text-xs text-muted-foreground">
-          Showing the newest 500 matches. Narrow the dates or search to see older records.
+          Showing the newest 500 matches. Narrow the month, account, or search to see older records.
         </p>
-      )}
+      ) : null}
     </div>
   )
+}
+
+function getMonthRange(month: Date | null) {
+  if (!month) {
+    return null
+  }
+
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1)
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0)
+
+  return {
+    dateFrom: formatInputDate(firstDay),
+    dateTo: formatInputDate(lastDay),
+  }
+}
+
+function formatInputDate(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatMoney(amount: string | null, currency: string) {
@@ -349,10 +261,6 @@ function formatMoney(amount: string | null, currency: string) {
     style: 'currency',
     currency,
   }).format(Number(amount))
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('sv-SE', { dateStyle: 'medium' }).format(new Date(value))
 }
 
 function formatDateTime(value: string) {
