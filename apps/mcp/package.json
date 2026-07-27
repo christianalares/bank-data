@@ -16,10 +16,12 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@hidden-village/db": "workspace:*",
     "@hidden-village/finance": "workspace:*",
     "@hidden-village/storage": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@napi-rs/canvas": "^0.1.100",
+    "drizzle-orm": "^0.45.2",
     "pdf-to-img": "^6.2.0",
     "zod": "^4.4.3"
   },

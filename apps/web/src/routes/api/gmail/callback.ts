@@ -4,6 +4,7 @@ import type { syncGmailInboxTask } from '@hidden-village/jobs'
 import { createFileRoute } from '@tanstack/react-router'
 import { tasks } from '@trigger.dev/sdk'
 import { google } from 'googleapis'
+import { getOrCreateWorkspace } from '#/features/banking/shared'
 import { encrypt } from '#/lib/crypto'
 
 async function exchangeCode(code: string) {
@@ -60,10 +61,12 @@ export const Route = createFileRoute('/api/gmail/callback')({
           const email = await getUserEmail(tokens.access_token)
 
           const db = createDb()
+          const businessWorkspace = await getOrCreateWorkspace(session.user.id, 'business')
 
           // Upsert — single row, delete any previous connection first
           await db.delete(gmailConnection)
           await db.insert(gmailConnection).values({
+            workspaceId: businessWorkspace.id,
             email,
             accessToken: encrypt(tokens.access_token),
             refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,

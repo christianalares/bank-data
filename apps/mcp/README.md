@@ -8,6 +8,9 @@ links, and managing transaction matches without exposing raw document bytes.
 Both transports require:
 
 - `DATABASE_URL`: PostgreSQL connection string
+- `PERSONAL_DATA_ENCRYPTION_KEY`: the same 64-character hex key used by the web and jobs services
+- `PERSONAL_SEARCH_SERVICE_URL` and `PERSONAL_SEARCH_API_TOKEN`: the isolated Cloudflare
+  Workers AI + Vectorize search service
 
 The HTTP transport also requires:
 
@@ -36,6 +39,15 @@ The server reads the app's workspace directly. It never creates a workspace.
 - `dismiss_suggested_match`
 - `unlink_attachment`
 - `ignore_attachment`
+
+Personal MCP tokens created under **Personal → Connections** expose only these read-only tools:
+
+- `list_personal_accounts`
+- `search_personal_transactions`
+- `summarize_personal_spending`
+
+They never expose IBANs, raw provider payloads, invoice tools, or mutation tools. Every personal tool
+call is recorded in the MCP access log without storing the text of the user’s search query.
 
 All list results are cursor-paginated. Pass the returned `nextCursor` into the next call with the
 same filters.
@@ -88,6 +100,9 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 MCP_API_TOKEN=replace-with-a-random-32-character-or-longer-secret
 MCP_TRANSPORT=http
 DATABASE_STATEMENT_TIMEOUT_MS=25000
+PERSONAL_DATA_ENCRYPTION_KEY=replace-with-the-same-64-character-hex-key-as-web-and-jobs
+PERSONAL_SEARCH_SERVICE_URL=https://hidden-village-personal-search.christian-alares.workers.dev
+PERSONAL_SEARCH_API_TOKEN=replace-with-the-worker-secret
 ```
 
 Replace `Postgres` with the actual Railway database service name.

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { getRequiredApiToken, hasValidBearerToken } from './bearer-auth'
+import {
+  getBearerToken,
+  getRequiredApiToken,
+  hashPersonalMcpToken,
+  hasValidBearerToken,
+} from './bearer-auth'
 
 const VALID_TOKEN = '0123456789abcdef0123456789abcdef'
 const originalToken = process.env.MCP_API_TOKEN
@@ -29,5 +34,13 @@ describe('bearer authentication', () => {
     process.env.MCP_API_TOKEN = 'too-short'
 
     expect(() => getRequiredApiToken()).toThrow('at least 32 characters')
+  })
+
+  it('extracts and hashes personal bearer tokens without retaining plaintext', () => {
+    const token = 'hv_personal_0123456789abcdef0123456789abcdef'
+
+    expect(getBearerToken(`Bearer ${token}`)).toBe(token)
+    expect(hashPersonalMcpToken(token)).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(hashPersonalMcpToken(token)).not.toContain(token)
   })
 })

@@ -18,8 +18,17 @@ export {
 } from '#/features/banking/gmail-server'
 export {
   completeEnableBankingAuthorization,
+  createPersonalMcpToken,
+  disconnectPersonalBankConnection,
+  getPersonalBankProviders,
+  getPersonalConnections,
+  getPersonalMcpTokens,
+  getPersonalTransactions,
   getTransactions,
   importTransactionsCsv,
+  reviewPersonalTransfer,
+  revokePersonalMcpToken,
+  setPersonalAccountIncluded,
   startEnableBankingAuthorization,
   updateTransactionNote,
 } from '#/features/banking/server'

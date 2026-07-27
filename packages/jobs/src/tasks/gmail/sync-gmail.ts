@@ -33,7 +33,9 @@ export const syncGmailInboxTask = task({
       return { skipped: true }
     }
 
-    const ws = await db.query.workspace.findFirst()
+    const ws = await db.query.workspace.findFirst({
+      where: (table, { eq }) => eq(table.id, connection.workspaceId),
+    })
     if (!ws) {
       logger.error('No workspace found')
       return { skipped: true }

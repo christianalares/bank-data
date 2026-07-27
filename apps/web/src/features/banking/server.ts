@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
 import {
   createEnableBankingInternalId,
@@ -7,9 +7,13 @@ import {
   getEnableBankingAccountBalances,
   getEnableBankingAccountDetails,
   getEnableBankingAccountName,
+  getEnableBankingAspsps,
   getEnableBankingTransactions,
+  matchPersonalTransfers,
   normalizeEnableBankingTransaction,
   pickEnableBankingBalance,
+  searchPersonalTransactionVectors,
+  upsertPersonalTransactionVector,
 } from '@hidden-village/banking'
 import {
   attachment,
@@ -17,12 +21,21 @@ import {
   bankConnection,
   bankTransaction,
   createDb,
+  createPersonalSearchToken,
+  decryptPersonalAccountPayload,
+  decryptPersonalTransactionPayload,
+  encryptPersonalAccountPayload,
+  encryptPersonalProviderPayload,
+  encryptPersonalTransactionPayload,
+  personalMcpToken,
+  personalTransactionSearchToken,
+  tokenizePersonalSearchText,
 } from '@hidden-village/db'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-import { and, count, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 
-import { getOrCreateWorkspace } from '#/features/banking/shared'
+import { getOrCreateWorkspace, type WorkspaceKind } from '#/features/banking/shared'
 import { authMiddleware } from '#/lib/middleware'
 
 type ImportCsvInput = {
@@ -36,6 +49,7 @@ type StartEnableBankingAuthorizationInput = {
   aspspCountry?: string
   psuType?: 'personal' | 'business'
   authMethod?: string
+  workspaceKind?: WorkspaceKind
 }
 
 type CompleteEnableBankingAuthorizationInput = {
@@ -62,6 +76,42 @@ type NormalizedTransaction = {
 type UpdateTransactionNoteInput = {
   transactionId: string
   note: string | null
+  workspaceKind?: WorkspaceKind
+  merchantOverride?: string | null
+}
+
+type SetPersonalAccountIncludedInput = {
+  accountId: string
+  included: boolean
+}
+
+type BankProvidersInput = {
+  country?: string
+}
+
+type DisconnectBankConnectionInput = {
+  connectionId: string
+}
+
+type PersonalTransactionsInput = {
+  query?: string
+  accountId?: string
+  dateFrom?: string
+  dateTo?: string
+  limit?: number
+}
+
+type CreatePersonalMcpTokenInput = {
+  name: string
+}
+
+type RevokePersonalMcpTokenInput = {
+  tokenId: string
+}
+
+type ReviewPersonalTransferInput = {
+  transactionId: string
+  action: 'confirm' | 'dismiss'
 }
 
 export const updateTransactionNote = createServerFn({ method: 'POST' })
@@ -69,27 +119,77 @@ export const updateTransactionNote = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
+    const workspaceKind = data.workspaceKind ?? 'business'
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id, workspaceKind)
+    const current = await db.query.bankTransaction.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.transactionId), eq(table.workspaceId, ownerWorkspace.id)),
+    })
+
+    if (!current) {
+      throw new Error('Transaction not found')
+    }
+
+    const values =
+      workspaceKind === 'personal'
+        ? {
+            encryptedPersonalPayload: encryptPersonalTransactionPayload({
+              ...getPersonalPayload(current),
+              noteOverride: data.note?.trim() || null,
+              merchantOverride: data.merchantOverride?.trim() || null,
+            }),
+            personalSearchStatus: 'pending' as const,
+            personalSearchIndexedAt: null,
+            personalSearchError: null,
+            updatedAt: new Date(),
+          }
+        : {
+            note: data.note,
+            updatedAt: new Date(),
+          }
 
     const [updated] = await db
       .update(bankTransaction)
-      .set({
-        note: data.note,
-        updatedAt: new Date(),
-      })
+      .set(values)
       .where(
         and(
           eq(bankTransaction.id, data.transactionId),
           eq(bankTransaction.workspaceId, ownerWorkspace.id),
         ),
       )
-      .returning({ id: bankTransaction.id })
+      .returning()
 
     if (!updated) {
       throw new Error('Transaction not found')
     }
 
+    if (workspaceKind === 'personal') {
+      await indexPersonalTransaction(updated)
+    }
+
     return { ok: true }
+  })
+
+export const getPersonalBankProviders = createServerFn({ method: 'GET' })
+  .inputValidator((input: BankProvidersInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data }) => {
+    const aspsps = await getEnableBankingAspsps({
+      country: data.country?.trim() || 'SE',
+      psuType: 'personal',
+    })
+
+    return aspsps
+      .map((aspsp) => ({
+        name: aspsp.name,
+        country: aspsp.country,
+        logo: aspsp.logo ?? null,
+        beta: aspsp.beta ?? false,
+        maximumConsentValidityDays: aspsp.maximum_consent_validity
+          ? Math.floor(aspsp.maximum_consent_validity / 86_400)
+          : null,
+      }))
+      .sort((first, second) => first.name.localeCompare(second.name))
   })
 
 export const getTransactions = createServerFn({ method: 'GET' })
@@ -176,6 +276,372 @@ export const getTransactions = createServerFn({ method: 'GET' })
         errorMessage: latestConnection?.errorMessage ?? null,
       },
     }
+  })
+
+export const getPersonalTransactions = createServerFn({ method: 'GET' })
+  .inputValidator((input: PersonalTransactionsInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const includedAccounts = await db.query.bankAccount.findMany({
+      where: (table, { and, eq }) =>
+        and(eq(table.workspaceId, personalWorkspace.id), eq(table.included, true)),
+      orderBy: (table) => [desc(table.updatedAt)],
+    })
+    const includedAccountIds = includedAccounts.map((account) => account.id)
+
+    if (includedAccountIds.length === 0) {
+      return {
+        accounts: [],
+        transactions: [],
+        total: 0,
+        semanticSearchAvailable: false,
+      }
+    }
+
+    const query = data.query?.trim()
+    let matchingIds: string[] | undefined
+    let semanticScores = new Map<string, number>()
+
+    if (query) {
+      const tokenHashes = tokenizePersonalSearchText(query).map(createPersonalSearchToken)
+      const [tokenRows, vectorMatches] = await Promise.all([
+        tokenHashes.length > 0
+          ? db
+              .select({ transactionId: personalTransactionSearchToken.transactionId })
+              .from(personalTransactionSearchToken)
+              .where(
+                and(
+                  eq(personalTransactionSearchToken.workspaceId, personalWorkspace.id),
+                  inArray(personalTransactionSearchToken.tokenHash, tokenHashes),
+                ),
+              )
+          : Promise.resolve([]),
+        searchPersonalTransactionVectors({
+          query,
+          workspaceId: personalWorkspace.id,
+          limit: Math.min(Math.max(data.limit ?? 200, 10), 50),
+        }).catch(() => []),
+      ])
+      semanticScores = new Map(vectorMatches.map((match) => [match.id, match.score]))
+      matchingIds = [
+        ...new Set([
+          ...tokenRows.map((row) => row.transactionId),
+          ...vectorMatches.map((match) => match.id),
+        ]),
+      ]
+
+      if (matchingIds.length === 0) {
+        return {
+          accounts: includedAccounts.map(serializePersonalAccount),
+          transactions: [],
+          total: 0,
+          semanticSearchAvailable: vectorMatches.length > 0,
+        }
+      }
+    }
+
+    const conditions = [
+      eq(bankTransaction.workspaceId, personalWorkspace.id),
+      inArray(
+        bankTransaction.accountId,
+        data.accountId && includedAccountIds.includes(data.accountId)
+          ? [data.accountId]
+          : includedAccountIds,
+      ),
+      data.dateFrom
+        ? gte(bankTransaction.bookedAt, new Date(`${data.dateFrom}T00:00:00`))
+        : undefined,
+      data.dateTo
+        ? lte(bankTransaction.bookedAt, new Date(`${data.dateTo}T23:59:59.999`))
+        : undefined,
+      matchingIds ? inArray(bankTransaction.id, matchingIds) : undefined,
+    ]
+    const limit = Math.min(Math.max(data.limit ?? 200, 1), 500)
+    const rows = await db.query.bankTransaction.findMany({
+      where: and(...conditions),
+      orderBy: (table) => [desc(table.bookedAt), desc(table.createdAt)],
+      limit,
+    })
+    const accountById = new Map(includedAccounts.map((account) => [account.id, account]))
+    const transactions = rows.map((row) =>
+      serializePersonalTransaction(row, accountById.get(row.accountId)?.name ?? 'Unknown account'),
+    )
+
+    if (query) {
+      transactions.sort((first, second) => {
+        const scoreDelta =
+          (semanticScores.get(second.id) ?? 0) - (semanticScores.get(first.id) ?? 0)
+        return scoreDelta || second.bookedAt.localeCompare(first.bookedAt)
+      })
+    }
+
+    return {
+      accounts: includedAccounts.map(serializePersonalAccount),
+      transactions,
+      total: transactions.length,
+      semanticSearchAvailable: semanticScores.size > 0,
+    }
+  })
+
+export const getPersonalConnections = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const [connections, accounts] = await Promise.all([
+      db.query.bankConnection.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, personalWorkspace.id),
+        orderBy: (table) => [desc(table.createdAt)],
+      }),
+      db.query.bankAccount.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, personalWorkspace.id),
+        orderBy: (table) => [desc(table.updatedAt)],
+      }),
+    ])
+
+    return connections.map((connection) => ({
+      id: connection.id,
+      name: connection.name,
+      status: connection.status,
+      errorMessage: connection.errorMessage,
+      lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
+      consentValidUntil: connection.consentValidUntil?.toISOString() ?? null,
+      disconnectedAt: connection.disconnectedAt?.toISOString() ?? null,
+      accounts: accounts
+        .filter((account) => account.connectionId === connection.id)
+        .map((account) => ({
+          ...serializePersonalAccount(account),
+          included: account.included,
+          ibanSuffix: getPersonalAccountPayload(account).iban?.slice(-4) ?? null,
+          accountType: getPersonalAccountPayload(account).accountType,
+        })),
+    }))
+  })
+
+export const setPersonalAccountIncluded = createServerFn({ method: 'POST' })
+  .inputValidator((input: SetPersonalAccountIncludedInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const account = await db.query.bankAccount.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.accountId), eq(table.workspaceId, personalWorkspace.id)),
+    })
+
+    if (!account) {
+      throw new Error('Personal bank account not found')
+    }
+
+    await db
+      .update(bankAccount)
+      .set({ included: data.included, updatedAt: new Date() })
+      .where(and(eq(bankAccount.id, account.id), eq(bankAccount.workspaceId, personalWorkspace.id)))
+
+    let imported = 0
+    if (data.included) {
+      const duplicateAccounts = await db.query.bankAccount.findMany({
+        where: (table, { and, eq, ne }) =>
+          and(
+            eq(table.workspaceId, personalWorkspace.id),
+            eq(table.providerAccountId, account.providerAccountId),
+            ne(table.id, account.id),
+          ),
+        columns: { id: true },
+      })
+
+      if (duplicateAccounts.length > 0) {
+        await db
+          .update(bankAccount)
+          .set({ included: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(bankAccount.workspaceId, personalWorkspace.id),
+              inArray(
+                bankAccount.id,
+                duplicateAccounts.map((item) => item.id),
+              ),
+            ),
+          )
+      }
+
+      imported = await syncPersonalIncludedAccount({
+        workspaceId: personalWorkspace.id,
+        account,
+        historyDays: 3 * 366,
+      })
+    }
+
+    return { ok: true, included: data.included, imported }
+  })
+
+export const disconnectPersonalBankConnection = createServerFn({ method: 'POST' })
+  .inputValidator((input: DisconnectBankConnectionInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const [updated] = await db
+      .update(bankConnection)
+      .set({
+        status: 'disconnected',
+        disconnectedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(bankConnection.id, data.connectionId),
+          eq(bankConnection.workspaceId, personalWorkspace.id),
+        ),
+      )
+      .returning({ id: bankConnection.id })
+
+    if (!updated) {
+      throw new Error('Personal bank connection not found')
+    }
+
+    return { ok: true }
+  })
+
+export const getPersonalMcpTokens = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const [tokens, audits] = await Promise.all([
+      db.query.personalMcpToken.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, personalWorkspace.id),
+        orderBy: (table) => [desc(table.createdAt)],
+      }),
+      db.query.personalMcpAudit.findMany({
+        where: (table, { eq }) => eq(table.workspaceId, personalWorkspace.id),
+        orderBy: (table) => [desc(table.createdAt)],
+        limit: 20,
+      }),
+    ])
+
+    return {
+      endpoint: process.env.MCP_PUBLIC_URL?.trim() || null,
+      tokens: tokens.map((token) => ({
+        id: token.id,
+        name: token.name,
+        tokenPrefix: token.tokenPrefix,
+        createdAt: token.createdAt.toISOString(),
+        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        revokedAt: token.revokedAt?.toISOString() ?? null,
+      })),
+      recentAccess: audits.map((audit) => ({
+        id: audit.id,
+        tokenId: audit.tokenId,
+        toolName: audit.toolName,
+        resultCount: audit.resultCount,
+        createdAt: audit.createdAt.toISOString(),
+      })),
+    }
+  })
+
+export const createPersonalMcpToken = createServerFn({ method: 'POST' })
+  .inputValidator((input: CreatePersonalMcpTokenInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const name = data.name.trim()
+    if (!name || name.length > 80) {
+      throw new Error('Token name must contain between 1 and 80 characters')
+    }
+
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const token = `hv_personal_${randomBytes(32).toString('base64url')}`
+    const [stored] = await db
+      .insert(personalMcpToken)
+      .values({
+        workspaceId: personalWorkspace.id,
+        name,
+        tokenHash: createHash('sha256').update(token).digest('base64url'),
+        tokenPrefix: `${token.slice(0, 24)}…`,
+      })
+      .returning({ id: personalMcpToken.id })
+
+    return {
+      id: stored.id,
+      token,
+    }
+  })
+
+export const revokePersonalMcpToken = createServerFn({ method: 'POST' })
+  .inputValidator((input: RevokePersonalMcpTokenInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const [revoked] = await db
+      .update(personalMcpToken)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(personalMcpToken.id, data.tokenId),
+          eq(personalMcpToken.workspaceId, personalWorkspace.id),
+        ),
+      )
+      .returning({ id: personalMcpToken.id })
+
+    if (!revoked) {
+      throw new Error('Personal MCP token not found')
+    }
+
+    return { ok: true }
+  })
+
+export const reviewPersonalTransfer = createServerFn({ method: 'POST' })
+  .inputValidator((input: ReviewPersonalTransferInput) => input)
+  .middleware([authMiddleware])
+  .handler(async ({ data, context }) => {
+    const db = createDb()
+    const personalWorkspace = await getOrCreateWorkspace(context.session.user.id, 'personal')
+    const transaction = await db.query.bankTransaction.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, data.transactionId), eq(table.workspaceId, personalWorkspace.id)),
+    })
+
+    if (!transaction?.transferPairId || transaction.transferState !== 'suggested') {
+      throw new Error('Transfer suggestion not found')
+    }
+
+    const pair = await db.query.bankTransaction.findMany({
+      where: (table, { and, eq }) =>
+        and(
+          eq(table.workspaceId, personalWorkspace.id),
+          eq(table.transferPairId, transaction.transferPairId as string),
+        ),
+      columns: { id: true },
+    })
+    const ids = pair.map((item) => item.id)
+    if (ids.length !== 2) {
+      throw new Error('Transfer pair is incomplete')
+    }
+
+    await db
+      .update(bankTransaction)
+      .set(
+        data.action === 'confirm'
+          ? { transferState: 'confirmed', updatedAt: new Date() }
+          : {
+              transferState: 'dismissed',
+              transferPairId: null,
+              transferConfidence: null,
+              updatedAt: new Date(),
+            },
+      )
+      .where(
+        and(
+          eq(bankTransaction.workspaceId, personalWorkspace.id),
+          inArray(bankTransaction.id, ids),
+        ),
+      )
+
+    return { ok: true }
   })
 
 export const importTransactionsCsv = createServerFn({ method: 'POST' })
@@ -317,10 +783,12 @@ export const importTransactionsCsv = createServerFn({ method: 'POST' })
 
 async function syncEnableBankingConnection({
   workspaceId,
+  workspaceKind,
   connectionId,
   accounts,
 }: {
   workspaceId: string
+  workspaceKind: WorkspaceKind
   connectionId: string
   accounts: EnableBankingAccount[]
 }) {
@@ -335,109 +803,87 @@ async function syncEnableBankingConnection({
       continue
     }
 
-    const [details, balances, transactions] = await Promise.all([
+    const [details, balances] = await Promise.all([
       getEnableBankingAccountDetails(accountUid).catch(() => enableBankingAccount),
       getEnableBankingAccountBalances(accountUid).catch(() => []),
-      getEnableBankingTransactions(accountUid, {
-        dateFrom: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      }),
     ])
     const accountDetails = {
       ...enableBankingAccount,
       ...details,
     }
     const balance = pickEnableBankingBalance(balances)
+    const personalAccountPayload =
+      workspaceKind === 'personal'
+        ? {
+            name: getEnableBankingAccountName(accountDetails),
+            iban: accountDetails.account_id?.iban ?? null,
+            accountType: accountDetails.cash_account_type ?? null,
+            rawMetadata: { details: accountDetails, balances },
+          }
+        : null
     const [account] = await db
       .insert(bankAccount)
       .values({
         workspaceId,
         connectionId,
         providerAccountId: accountUid,
-        name: getEnableBankingAccountName(accountDetails),
-        iban: accountDetails.account_id?.iban ?? null,
+        name: personalAccountPayload
+          ? 'Encrypted personal account'
+          : getEnableBankingAccountName(accountDetails),
+        iban: personalAccountPayload ? null : (accountDetails.account_id?.iban ?? null),
         currency: accountDetails.currency ?? balance?.currency ?? 'SEK',
-        accountType: accountDetails.cash_account_type ?? null,
+        accountType: personalAccountPayload ? null : (accountDetails.cash_account_type ?? null),
         currentBalance: balance?.amount ?? null,
         availableBalance: balance?.amount ?? null,
-        rawMetadata: {
-          details: accountDetails,
-          balances,
-        },
+        rawMetadata: personalAccountPayload ? null : { details: accountDetails, balances },
+        encryptedPersonalPayload: personalAccountPayload
+          ? encryptPersonalAccountPayload(personalAccountPayload)
+          : null,
+        included: workspaceKind === 'business',
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [bankAccount.connectionId, bankAccount.providerAccountId],
         set: {
-          name: getEnableBankingAccountName(accountDetails),
-          iban: accountDetails.account_id?.iban ?? null,
+          name: personalAccountPayload
+            ? 'Encrypted personal account'
+            : getEnableBankingAccountName(accountDetails),
+          iban: personalAccountPayload ? null : (accountDetails.account_id?.iban ?? null),
           currency: accountDetails.currency ?? balance?.currency ?? 'SEK',
-          accountType: accountDetails.cash_account_type ?? null,
+          accountType: personalAccountPayload ? null : (accountDetails.cash_account_type ?? null),
           currentBalance: balance?.amount ?? null,
           availableBalance: balance?.amount ?? null,
-          rawMetadata: {
-            details: accountDetails,
-            balances,
-          },
+          rawMetadata: personalAccountPayload ? null : { details: accountDetails, balances },
+          encryptedPersonalPayload: personalAccountPayload
+            ? encryptPersonalAccountPayload(personalAccountPayload)
+            : null,
           updatedAt: now,
         },
       })
       .returning()
 
-    const normalizedTransactions = transactions.map((item) =>
-      normalizeEnableBankingTransaction(item, {
-        accountId: accountUid,
-        fallbackCurrency: account.currency,
-      }),
-    )
+    if (workspaceKind === 'business') {
+      const transactions = await getEnableBankingTransactions(accountUid, {
+        dateFrom: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      })
 
-    for (const transaction of normalizedTransactions) {
-      await db
-        .insert(bankTransaction)
-        .values({
+      for (const transaction of transactions.map((item) =>
+        normalizeEnableBankingTransaction(item, {
+          accountId: accountUid,
+          fallbackCurrency: account.currency,
+        }),
+      )) {
+        await upsertBusinessTransaction({
           workspaceId,
           connectionId,
           accountId: account.id,
-          provider: 'enable_banking',
-          providerTransactionId: transaction.providerTransactionId,
-          internalId: createEnableBankingInternalId(
-            workspaceId,
-            accountUid,
-            transaction.providerTransactionId,
-          ),
-          status: transaction.status,
-          bookedAt: transaction.bookedAt,
-          valueAt: transaction.valueAt,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          description: transaction.description,
-          merchantName: transaction.merchantName,
-          counterpartyName: transaction.counterpartyName,
-          balanceAfterTransaction: transaction.balanceAfterTransaction,
-          rawMetadata: transaction.rawMetadata,
-          createdAt: now,
-          updatedAt: now,
+          providerAccountId: accountUid,
+          transaction,
+          now,
         })
-        .onConflictDoUpdate({
-          target: bankTransaction.internalId,
-          set: {
-            accountId: account.id,
-            connectionId,
-            status: transaction.status,
-            bookedAt: transaction.bookedAt,
-            valueAt: transaction.valueAt,
-            amount: transaction.amount,
-            currency: transaction.currency,
-            description: transaction.description,
-            merchantName: transaction.merchantName,
-            counterpartyName: transaction.counterpartyName,
-            balanceAfterTransaction: transaction.balanceAfterTransaction,
-            rawMetadata: transaction.rawMetadata,
-            updatedAt: now,
-          },
-        })
-
-      syncedTransactions += 1
+        syncedTransactions += 1
+      }
     }
   }
 
@@ -457,20 +903,310 @@ async function syncEnableBankingConnection({
   }
 }
 
+async function syncPersonalIncludedAccount({
+  workspaceId,
+  account,
+  historyDays,
+}: {
+  workspaceId: string
+  account: typeof bankAccount.$inferSelect
+  historyDays: number
+}) {
+  const db = createDb()
+  const now = new Date()
+  const [details, balances, transactions] = await Promise.all([
+    getEnableBankingAccountDetails(account.providerAccountId).catch(() => null),
+    getEnableBankingAccountBalances(account.providerAccountId).catch(() => []),
+    getEnableBankingTransactions(account.providerAccountId, {
+      dateFrom: new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    }),
+  ])
+  const balance = pickEnableBankingBalance(balances)
+  const existingPayload = getPersonalAccountPayload(account)
+  const accountPayload = {
+    name: details ? getEnableBankingAccountName(details) : existingPayload.name,
+    iban: details?.account_id?.iban ?? existingPayload.iban,
+    accountType: details?.cash_account_type ?? existingPayload.accountType,
+    rawMetadata: { details, balances },
+  }
+
+  await db
+    .update(bankAccount)
+    .set({
+      name: 'Encrypted personal account',
+      iban: null,
+      currency: details?.currency ?? balance?.currency ?? account.currency,
+      accountType: null,
+      currentBalance: balance?.amount ?? account.currentBalance,
+      availableBalance: balance?.amount ?? account.availableBalance,
+      rawMetadata: null,
+      encryptedPersonalPayload: encryptPersonalAccountPayload(accountPayload),
+      updatedAt: now,
+    })
+    .where(and(eq(bankAccount.id, account.id), eq(bankAccount.workspaceId, workspaceId)))
+
+  for (const transaction of transactions.map((item) =>
+    normalizeEnableBankingTransaction(item, {
+      accountId: account.providerAccountId,
+      fallbackCurrency: account.currency,
+    }),
+  )) {
+    await upsertPersonalTransaction({
+      workspaceId,
+      connectionId: account.connectionId,
+      accountId: account.id,
+      providerAccountId: account.providerAccountId,
+      transaction,
+      now,
+    })
+  }
+
+  await matchPersonalTransfers({
+    db,
+    workspaceId,
+    since: new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000),
+  })
+
+  await db
+    .update(bankConnection)
+    .set({
+      status: 'connected',
+      errorMessage: null,
+      lastSyncedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(bankConnection.id, account.connectionId))
+
+  return transactions.length
+}
+
+async function upsertBusinessTransaction({
+  workspaceId,
+  connectionId,
+  accountId,
+  providerAccountId,
+  transaction,
+  now,
+}: {
+  workspaceId: string
+  connectionId: string
+  accountId: string
+  providerAccountId: string
+  transaction: NormalizedTransaction
+  now: Date
+}) {
+  const db = createDb()
+  await db
+    .insert(bankTransaction)
+    .values({
+      workspaceId,
+      connectionId,
+      accountId,
+      provider: 'enable_banking',
+      providerTransactionId: transaction.providerTransactionId,
+      internalId: createEnableBankingInternalId(
+        workspaceId,
+        providerAccountId,
+        transaction.providerTransactionId,
+      ),
+      status: transaction.status,
+      bookedAt: transaction.bookedAt,
+      valueAt: transaction.valueAt,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      description: transaction.description,
+      merchantName: transaction.merchantName,
+      counterpartyName: transaction.counterpartyName,
+      balanceAfterTransaction: transaction.balanceAfterTransaction,
+      rawMetadata: transaction.rawMetadata,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: bankTransaction.internalId,
+      set: {
+        accountId,
+        connectionId,
+        status: transaction.status,
+        bookedAt: transaction.bookedAt,
+        valueAt: transaction.valueAt,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        description: transaction.description,
+        merchantName: transaction.merchantName,
+        counterpartyName: transaction.counterpartyName,
+        balanceAfterTransaction: transaction.balanceAfterTransaction,
+        rawMetadata: transaction.rawMetadata,
+        updatedAt: now,
+      },
+    })
+}
+
+async function upsertPersonalTransaction({
+  workspaceId,
+  connectionId,
+  accountId,
+  providerAccountId,
+  transaction,
+  now,
+}: {
+  workspaceId: string
+  connectionId: string
+  accountId: string
+  providerAccountId: string
+  transaction: NormalizedTransaction
+  now: Date
+}) {
+  const db = createDb()
+  const internalId = createEnableBankingInternalId(
+    workspaceId,
+    providerAccountId,
+    transaction.providerTransactionId,
+  )
+  const existing = await db.query.bankTransaction.findFirst({
+    where: (table, { eq }) => eq(table.internalId, internalId),
+  })
+  const existingPayload = existing ? getPersonalPayload(existing) : null
+  const payload = {
+    description: transaction.description,
+    merchantName: transaction.merchantName,
+    counterpartyName: transaction.counterpartyName,
+    note: null,
+    rawMetadata: transaction.rawMetadata,
+    merchantOverride: existingPayload?.merchantOverride ?? null,
+    noteOverride: existingPayload?.noteOverride ?? null,
+  }
+  const [stored] = await db
+    .insert(bankTransaction)
+    .values({
+      workspaceId,
+      connectionId,
+      accountId,
+      provider: 'enable_banking',
+      providerTransactionId: transaction.providerTransactionId,
+      internalId,
+      status: transaction.status,
+      bookedAt: transaction.bookedAt,
+      valueAt: transaction.valueAt,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      description: 'Encrypted personal transaction',
+      merchantName: null,
+      counterpartyName: null,
+      balanceAfterTransaction: transaction.balanceAfterTransaction,
+      note: null,
+      rawMetadata: null,
+      encryptedPersonalPayload: encryptPersonalTransactionPayload(payload),
+      personalSearchStatus: 'pending',
+      personalSearchIndexedAt: null,
+      personalSearchError: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: bankTransaction.internalId,
+      set: {
+        accountId,
+        connectionId,
+        status: transaction.status,
+        bookedAt: transaction.bookedAt,
+        valueAt: transaction.valueAt,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        balanceAfterTransaction: transaction.balanceAfterTransaction,
+        encryptedPersonalPayload: encryptPersonalTransactionPayload(payload),
+        personalSearchStatus: 'pending',
+        personalSearchIndexedAt: null,
+        personalSearchError: null,
+        updatedAt: now,
+      },
+    })
+    .returning()
+
+  await indexPersonalTransaction(stored, payload)
+}
+
+async function indexPersonalTransaction(
+  transaction: typeof bankTransaction.$inferSelect,
+  payload = getPersonalPayload(transaction),
+) {
+  const db = createDb()
+  const searchText = [
+    payload.merchantOverride,
+    payload.merchantName,
+    payload.counterpartyName,
+    payload.description,
+    payload.noteOverride,
+    payload.note,
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join('\n')
+  const tokenHashes = tokenizePersonalSearchText(searchText).map(createPersonalSearchToken)
+
+  await db
+    .delete(personalTransactionSearchToken)
+    .where(eq(personalTransactionSearchToken.transactionId, transaction.id))
+
+  if (tokenHashes.length > 0) {
+    await db.insert(personalTransactionSearchToken).values(
+      tokenHashes.map((tokenHash) => ({
+        workspaceId: transaction.workspaceId,
+        transactionId: transaction.id,
+        tokenHash,
+      })),
+    )
+  }
+
+  try {
+    const result = await upsertPersonalTransactionVector({
+      transactionId: transaction.id,
+      text: searchText,
+      metadata: {
+        workspaceId: transaction.workspaceId,
+        accountId: transaction.accountId,
+        bookedAt: transaction.bookedAt.toISOString(),
+        currency: transaction.currency,
+        direction: Number(transaction.amount) < 0 ? 'debit' : 'credit',
+      },
+    })
+
+    await db
+      .update(bankTransaction)
+      .set({
+        personalSearchStatus: result.indexed ? 'indexed' : 'pending',
+        personalSearchIndexedAt: result.indexed ? new Date() : null,
+        personalSearchError: null,
+      })
+      .where(eq(bankTransaction.id, transaction.id))
+  } catch (error) {
+    await db
+      .update(bankTransaction)
+      .set({
+        personalSearchStatus: 'error',
+        personalSearchError: error instanceof Error ? error.message : 'Semantic indexing failed',
+      })
+      .where(eq(bankTransaction.id, transaction.id))
+  }
+}
+
 export const startEnableBankingAuthorization = createServerFn({ method: 'POST' })
   .inputValidator((input: StartEnableBankingAuthorizationInput) => input)
   .middleware([authMiddleware])
   .handler(async ({ data, context }) => {
     const request = getRequest()
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
+    const workspaceKind =
+      data.workspaceKind ?? (data.psuType === 'personal' ? 'personal' : 'business')
+    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id, workspaceKind)
     const state = randomUUID()
     const redirectUrl = `${getEnableBankingRedirectOrigin(request.url)}/api/banking/enable-banking/callback`
     const now = new Date()
     const authMethod = data.authMethod?.trim()
     const body = {
       access: {
-        valid_until: new Date(Date.now() + 89 * 24 * 60 * 60 * 1000).toISOString(),
+        valid_until: new Date(
+          Date.now() + (workspaceKind === 'personal' ? 179 : 89) * 24 * 60 * 60 * 1000,
+        ).toISOString(),
       },
       aspsp: {
         name: data.aspspName.trim(),
@@ -478,7 +1214,7 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
       },
       state,
       redirect_url: redirectUrl,
-      psu_type: data.psuType ?? 'business',
+      psu_type: data.psuType ?? (workspaceKind === 'personal' ? 'personal' : 'business'),
       ...(authMethod ? { auth_method: authMethod } : {}),
     }
 
@@ -496,6 +1232,7 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
         aspsp: body.aspsp,
         psuType: body.psu_type,
         redirectUrl,
+        workspaceKind,
       },
       createdAt: now,
       updatedAt: now,
@@ -520,11 +1257,19 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
   .middleware([authMiddleware])
   .handler(async ({ data, context }) => {
     const db = createDb()
-    const ownerWorkspace = await getOrCreateWorkspace(context.session.user.id)
+    const ownerWorkspaces = await db.query.workspace.findMany({
+      where: (table, { eq }) => eq(table.ownerId, context.session.user.id),
+    })
+    const ownerWorkspaceIds = ownerWorkspaces.map((item) => item.id)
+
+    if (ownerWorkspaceIds.length === 0) {
+      throw new Error('No owner workspace exists')
+    }
+
     const pendingConnection = await db.query.bankConnection.findFirst({
-      where: (table, { and, eq }) =>
+      where: (table, { and, eq, inArray }) =>
         and(
-          eq(table.workspaceId, ownerWorkspace.id),
+          inArray(table.workspaceId, ownerWorkspaceIds),
           eq(table.provider, 'enable_banking'),
           eq(table.providerConnectionId, `auth:${data.state}`),
         ),
@@ -532,6 +1277,11 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
 
     if (!pendingConnection) {
       throw new Error('Enable Banking authorization state was not found')
+    }
+    const ownerWorkspace = ownerWorkspaces.find((item) => item.id === pendingConnection.workspaceId)
+
+    if (!ownerWorkspace) {
+      throw new Error('Enable Banking authorization workspace was not found')
     }
 
     const response = await enableBankingRequest<{
@@ -558,7 +1308,20 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
         name: `Enable Banking ${response.aspsp?.name ?? 'connection'}`,
         status: 'connected',
         errorMessage: null,
-        rawMetadata: response,
+        rawMetadata:
+          ownerWorkspace.kind === 'personal'
+            ? {
+                aspsp: response.aspsp,
+                access: response.access,
+                workspaceKind: 'personal',
+              }
+            : response,
+        encryptedPersonalPayload:
+          ownerWorkspace.kind === 'personal' ? encryptPersonalProviderPayload(response) : null,
+        consentValidUntil: response.access?.valid_until
+          ? new Date(response.access.valid_until)
+          : null,
+        disconnectedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(bankConnection.id, pendingConnection.id))
@@ -566,12 +1329,14 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
 
     const synced = await syncEnableBankingConnection({
       workspaceId: ownerWorkspace.id,
+      workspaceKind: ownerWorkspace.kind,
       connectionId: connection.id,
       accounts: response.accounts,
     })
 
     return {
       ok: true,
+      workspaceKind: ownerWorkspace.kind,
       ...synced,
     }
   })
@@ -584,6 +1349,73 @@ function getEnableBankingRedirectOrigin(requestUrl: string) {
   }
 
   return new URL(requestUrl).origin
+}
+
+function getPersonalPayload(transaction: typeof bankTransaction.$inferSelect) {
+  if (transaction.encryptedPersonalPayload) {
+    return decryptPersonalTransactionPayload(transaction.encryptedPersonalPayload)
+  }
+
+  return {
+    description: transaction.description,
+    merchantName: transaction.merchantName,
+    counterpartyName: transaction.counterpartyName,
+    note: transaction.note,
+    rawMetadata: transaction.rawMetadata,
+    merchantOverride: null,
+    noteOverride: null,
+  }
+}
+
+function serializePersonalAccount(account: typeof bankAccount.$inferSelect) {
+  const payload = getPersonalAccountPayload(account)
+
+  return {
+    id: account.id,
+    name: payload.name,
+    currency: account.currency,
+    currentBalance: account.currentBalance,
+    availableBalance: account.availableBalance,
+    updatedAt: account.updatedAt.toISOString(),
+  }
+}
+
+function getPersonalAccountPayload(account: typeof bankAccount.$inferSelect) {
+  if (!account.encryptedPersonalPayload) {
+    return {
+      name: account.name,
+      iban: account.iban,
+      accountType: account.accountType,
+      rawMetadata: account.rawMetadata,
+    }
+  }
+
+  return decryptPersonalAccountPayload(account.encryptedPersonalPayload)
+}
+
+function serializePersonalTransaction(
+  transaction: typeof bankTransaction.$inferSelect,
+  accountName: string,
+) {
+  const payload = getPersonalPayload(transaction)
+
+  return {
+    id: transaction.id,
+    accountId: transaction.accountId,
+    accountName,
+    bookedAt: transaction.bookedAt.toISOString(),
+    amount: transaction.amount,
+    currency: transaction.currency,
+    description: payload.description,
+    merchantName: payload.merchantOverride ?? payload.merchantName,
+    originalMerchantName: payload.merchantName,
+    counterpartyName: payload.counterpartyName,
+    note: payload.noteOverride ?? payload.note,
+    status: transaction.status,
+    transferState: transaction.transferState,
+    transferPairId: transaction.transferPairId,
+    transferConfidence: transaction.transferConfidence,
+  }
 }
 
 function parseCsv(csv: string) {

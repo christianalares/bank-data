@@ -6,16 +6,25 @@ import {
   getEnableBankingAccountName,
   getEnableBankingSessionAccounts,
   getEnableBankingTransactions,
+  matchPersonalTransfers,
   type NormalizedEnableBankingTransaction,
   normalizeEnableBankingTransaction,
   pickEnableBankingBalance,
+  upsertPersonalTransactionVector,
 } from '@hidden-village/banking'
 import {
   bankAccount,
   bankConnection,
   bankTransaction,
   createDb,
+  createPersonalSearchToken,
   type Database,
+  decryptPersonalAccountPayload,
+  decryptPersonalTransactionPayload,
+  encryptPersonalAccountPayload,
+  encryptPersonalTransactionPayload,
+  personalTransactionSearchToken,
+  tokenizePersonalSearchText,
 } from '@hidden-village/db'
 import { logger, schedules, schemaTask } from '@trigger.dev/sdk'
 import { eq } from 'drizzle-orm'
@@ -74,7 +83,12 @@ export const syncBankingTask = schemaTask({
 
         await db
           .update(bankConnection)
-          .set({ status, errorMessage: message, updatedAt: new Date() })
+          .set({
+            status,
+            errorMessage: message,
+            disconnectedAt: status === 'disconnected' ? new Date() : null,
+            updatedAt: new Date(),
+          })
           .where(eq(bankConnection.id, connection.id))
 
         // Consent failures need a human to re-authorize; retrying is pointless.
@@ -86,8 +100,27 @@ export const syncBankingTask = schemaTask({
     }
 
     const workspaceIds = [...new Set(connections.map((c) => c.workspaceId))]
+    const businessWorkspaces =
+      workspaceIds.length > 0
+        ? await db.query.workspace.findMany({
+            where: (table, { and, eq, inArray }) =>
+              and(inArray(table.id, workspaceIds), eq(table.kind, 'business')),
+          })
+        : []
+    const personalWorkspaces =
+      workspaceIds.length > 0
+        ? await db.query.workspace.findMany({
+            where: (table, { and, eq, inArray }) =>
+              and(inArray(table.id, workspaceIds), eq(table.kind, 'personal')),
+          })
+        : []
     await Promise.all(
-      workspaceIds.map((workspaceId) => matchPendingAttachmentsTask.trigger({ workspaceId })),
+      businessWorkspaces.map((item) =>
+        matchPendingAttachmentsTask.trigger({ workspaceId: item.id }),
+      ),
+    )
+    await Promise.all(
+      personalWorkspaces.map((item) => matchPersonalTransfers({ db, workspaceId: item.id })),
     )
 
     if (transientFailures.length > 0) {
@@ -128,18 +161,35 @@ async function syncEnableBankingConnection({
   connection: typeof bankConnection.$inferSelect
   overlapDays: number
 }) {
+  const connectionWorkspace = await db.query.workspace.findFirst({
+    where: (table, { eq }) => eq(table.id, connection.workspaceId),
+  })
+
+  if (!connectionWorkspace) {
+    throw new Error('Bank connection workspace not found')
+  }
+
   const localAccounts = await db.query.bankAccount.findMany({
     where: (table, { eq }) => eq(table.connectionId, connection.id),
   })
+  const includedLocalAccounts = localAccounts.filter(
+    (account) => connectionWorkspace.kind === 'business' || account.included,
+  )
   const accounts: EnableBankingAccount[] =
     localAccounts.length > 0
-      ? localAccounts.map((account) => ({
-          uid: account.providerAccountId,
-          name: account.name,
-          currency: account.currency,
-          cash_account_type: account.accountType ?? undefined,
-          account_id: { iban: account.iban ?? undefined },
-        }))
+      ? includedLocalAccounts.map((account) => {
+          const personalPayload = account.encryptedPersonalPayload
+            ? decryptPersonalAccountPayload(account.encryptedPersonalPayload)
+            : null
+
+          return {
+            uid: account.providerAccountId,
+            name: personalPayload?.name ?? account.name,
+            currency: account.currency,
+            cash_account_type: personalPayload?.accountType ?? account.accountType ?? undefined,
+            account_id: { iban: personalPayload?.iban ?? account.iban ?? undefined },
+          }
+        })
       : await getEnableBankingSessionAccounts(connection.providerConnectionId)
 
   const now = new Date()
@@ -162,6 +212,15 @@ async function syncEnableBankingConnection({
 
     const accountDetails = { ...enableBankingAccount, ...details }
     const balance = pickEnableBankingBalance(balances)
+    const personalAccountPayload =
+      connectionWorkspace.kind === 'personal'
+        ? {
+            name: getEnableBankingAccountName(accountDetails),
+            iban: accountDetails.account_id?.iban ?? null,
+            accountType: accountDetails.cash_account_type ?? null,
+            rawMetadata: { details: accountDetails, balances },
+          }
+        : null
 
     const [account] = await db
       .insert(bankAccount)
@@ -169,30 +228,45 @@ async function syncEnableBankingConnection({
         workspaceId: connection.workspaceId,
         connectionId: connection.id,
         providerAccountId: accountUid,
-        name: getEnableBankingAccountName(accountDetails),
-        iban: accountDetails.account_id?.iban ?? null,
+        name: personalAccountPayload
+          ? 'Encrypted personal account'
+          : getEnableBankingAccountName(accountDetails),
+        iban: personalAccountPayload ? null : (accountDetails.account_id?.iban ?? null),
         currency: accountDetails.currency ?? balance?.currency ?? 'SEK',
-        accountType: accountDetails.cash_account_type ?? null,
+        accountType: personalAccountPayload ? null : (accountDetails.cash_account_type ?? null),
         currentBalance: balance?.amount ?? null,
         availableBalance: balance?.amount ?? null,
-        rawMetadata: { details: accountDetails, balances },
+        rawMetadata: personalAccountPayload ? null : { details: accountDetails, balances },
+        encryptedPersonalPayload: personalAccountPayload
+          ? encryptPersonalAccountPayload(personalAccountPayload)
+          : null,
+        included: connectionWorkspace.kind === 'business',
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [bankAccount.connectionId, bankAccount.providerAccountId],
         set: {
-          name: getEnableBankingAccountName(accountDetails),
-          iban: accountDetails.account_id?.iban ?? null,
+          name: personalAccountPayload
+            ? 'Encrypted personal account'
+            : getEnableBankingAccountName(accountDetails),
+          iban: personalAccountPayload ? null : (accountDetails.account_id?.iban ?? null),
           currency: accountDetails.currency ?? balance?.currency ?? 'SEK',
-          accountType: accountDetails.cash_account_type ?? null,
+          accountType: personalAccountPayload ? null : (accountDetails.cash_account_type ?? null),
           currentBalance: balance?.amount ?? null,
           availableBalance: balance?.amount ?? null,
-          rawMetadata: { details: accountDetails, balances },
+          rawMetadata: personalAccountPayload ? null : { details: accountDetails, balances },
+          encryptedPersonalPayload: personalAccountPayload
+            ? encryptPersonalAccountPayload(personalAccountPayload)
+            : null,
           updatedAt: now,
         },
       })
       .returning()
+
+    if (connectionWorkspace.kind === 'personal' && !account.included) {
+      continue
+    }
 
     for (const transaction of transactions.map((item) =>
       normalizeEnableBankingTransaction(item, {
@@ -207,6 +281,7 @@ async function syncEnableBankingConnection({
         accountId: account.id,
         providerAccountId: accountUid,
         transaction,
+        workspaceKind: connectionWorkspace.kind,
         now,
       })
 
@@ -229,6 +304,7 @@ async function upsertBankTransaction({
   accountId,
   providerAccountId,
   transaction,
+  workspaceKind,
   now,
 }: {
   db: Database
@@ -237,9 +313,33 @@ async function upsertBankTransaction({
   accountId: string
   providerAccountId: string
   transaction: NormalizedEnableBankingTransaction
+  workspaceKind: 'business' | 'personal'
   now: Date
 }) {
-  await db
+  const internalId = createEnableBankingInternalId(
+    workspaceId,
+    providerAccountId,
+    transaction.providerTransactionId,
+  )
+  const existing = await db.query.bankTransaction.findFirst({
+    where: (table, { eq }) => eq(table.internalId, internalId),
+  })
+  const existingPayload = existing?.encryptedPersonalPayload
+    ? decryptPersonalTransactionPayload(existing.encryptedPersonalPayload)
+    : null
+  const personalPayload =
+    workspaceKind === 'personal'
+      ? {
+          description: transaction.description,
+          merchantName: transaction.merchantName,
+          counterpartyName: transaction.counterpartyName,
+          note: null,
+          rawMetadata: transaction.rawMetadata,
+          merchantOverride: existingPayload?.merchantOverride ?? null,
+          noteOverride: existingPayload?.noteOverride ?? null,
+        }
+      : null
+  const [stored] = await db
     .insert(bankTransaction)
     .values({
       workspaceId,
@@ -247,21 +347,22 @@ async function upsertBankTransaction({
       accountId,
       provider: 'enable_banking',
       providerTransactionId: transaction.providerTransactionId,
-      internalId: createEnableBankingInternalId(
-        workspaceId,
-        providerAccountId,
-        transaction.providerTransactionId,
-      ),
+      internalId,
       status: transaction.status,
       bookedAt: transaction.bookedAt,
       valueAt: transaction.valueAt,
       amount: transaction.amount,
       currency: transaction.currency,
-      description: transaction.description,
-      merchantName: transaction.merchantName,
-      counterpartyName: transaction.counterpartyName,
+      description:
+        workspaceKind === 'personal' ? 'Encrypted personal transaction' : transaction.description,
+      merchantName: workspaceKind === 'personal' ? null : transaction.merchantName,
+      counterpartyName: workspaceKind === 'personal' ? null : transaction.counterpartyName,
       balanceAfterTransaction: transaction.balanceAfterTransaction,
-      rawMetadata: transaction.rawMetadata,
+      rawMetadata: workspaceKind === 'personal' ? null : transaction.rawMetadata,
+      encryptedPersonalPayload: personalPayload
+        ? encryptPersonalTransactionPayload(personalPayload)
+        : null,
+      personalSearchStatus: workspaceKind === 'personal' ? 'pending' : null,
       createdAt: now,
       updatedAt: now,
     })
@@ -275,14 +376,93 @@ async function upsertBankTransaction({
         valueAt: transaction.valueAt,
         amount: transaction.amount,
         currency: transaction.currency,
-        description: transaction.description,
-        merchantName: transaction.merchantName,
-        counterpartyName: transaction.counterpartyName,
+        description:
+          workspaceKind === 'personal' ? 'Encrypted personal transaction' : transaction.description,
+        merchantName: workspaceKind === 'personal' ? null : transaction.merchantName,
+        counterpartyName: workspaceKind === 'personal' ? null : transaction.counterpartyName,
         balanceAfterTransaction: transaction.balanceAfterTransaction,
-        rawMetadata: transaction.rawMetadata,
+        rawMetadata: workspaceKind === 'personal' ? null : transaction.rawMetadata,
+        encryptedPersonalPayload: personalPayload
+          ? encryptPersonalTransactionPayload(personalPayload)
+          : null,
+        personalSearchStatus: workspaceKind === 'personal' ? 'pending' : null,
+        personalSearchIndexedAt: workspaceKind === 'personal' ? null : undefined,
+        personalSearchError: workspaceKind === 'personal' ? null : undefined,
         updatedAt: now,
       },
     })
+    .returning()
+
+  if (personalPayload) {
+    await indexPersonalTransaction(db, stored, personalPayload)
+  }
+}
+
+async function indexPersonalTransaction(
+  db: Database,
+  transaction: typeof bankTransaction.$inferSelect,
+  payload: ReturnType<typeof decryptPersonalTransactionPayload>,
+) {
+  const searchText = [
+    payload.merchantOverride,
+    payload.merchantName,
+    payload.counterpartyName,
+    payload.description,
+    payload.noteOverride,
+    payload.note,
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join('\n')
+  const tokenHashes = tokenizePersonalSearchText(searchText).map(createPersonalSearchToken)
+
+  await db
+    .delete(personalTransactionSearchToken)
+    .where(eq(personalTransactionSearchToken.transactionId, transaction.id))
+
+  if (tokenHashes.length > 0) {
+    await db.insert(personalTransactionSearchToken).values(
+      tokenHashes.map((tokenHash) => ({
+        workspaceId: transaction.workspaceId,
+        transactionId: transaction.id,
+        tokenHash,
+      })),
+    )
+  }
+
+  try {
+    const result = await upsertPersonalTransactionVector({
+      transactionId: transaction.id,
+      text: searchText,
+      metadata: {
+        workspaceId: transaction.workspaceId,
+        accountId: transaction.accountId,
+        bookedAt: transaction.bookedAt.toISOString(),
+        currency: transaction.currency,
+        direction: Number(transaction.amount) < 0 ? 'debit' : 'credit',
+      },
+    })
+
+    await db
+      .update(bankTransaction)
+      .set({
+        personalSearchStatus: result.indexed ? 'indexed' : 'pending',
+        personalSearchIndexedAt: result.indexed ? new Date() : null,
+        personalSearchError: null,
+      })
+      .where(eq(bankTransaction.id, transaction.id))
+  } catch (error) {
+    logger.warn('Personal semantic indexing failed', {
+      transactionId: transaction.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    await db
+      .update(bankTransaction)
+      .set({
+        personalSearchStatus: 'error',
+        personalSearchError: error instanceof Error ? error.message : 'Semantic indexing failed',
+      })
+      .where(eq(bankTransaction.id, transaction.id))
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

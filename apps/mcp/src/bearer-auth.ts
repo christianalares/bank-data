@@ -15,17 +15,25 @@ export function getRequiredApiToken() {
 }
 
 export function hasValidBearerToken(header: string | string[] | undefined, expectedToken: string) {
-  if (typeof header !== 'string') {
+  const token = getBearerToken(header)
+  if (!token) {
     return false
+  }
+
+  return timingSafeEqual(hashToken(token), hashToken(expectedToken))
+}
+
+export function getBearerToken(header: string | string[] | undefined) {
+  if (typeof header !== 'string') {
+    return null
   }
 
   const match = /^Bearer ([^\s]+)$/i.exec(header.trim())
+  return match?.[1] ?? null
+}
 
-  if (!match) {
-    return false
-  }
-
-  return timingSafeEqual(hashToken(match[1]), hashToken(expectedToken))
+export function hashPersonalMcpToken(token: string) {
+  return createHash('sha256').update(token).digest('base64url')
 }
 
 function hashToken(token: string) {

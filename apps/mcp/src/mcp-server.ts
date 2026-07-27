@@ -1,3 +1,4 @@
+import { createDb, personalMcpAudit } from '@hidden-village/db'
 import {
   attachmentIdInputSchema,
   attachmentMutationResultSchema,
@@ -7,6 +8,12 @@ import {
   getTransactionInputSchema,
   linkAttachmentInputSchema,
   listAttachmentsInputSchema,
+  PersonalFinanceService,
+  personalAccountsSchema,
+  personalSpendingSummaryInputSchema,
+  personalSpendingSummarySchema,
+  personalTransactionPageSchema,
+  searchPersonalTransactionsInputSchema,
   searchTransactionsInputSchema,
   transactionDetailSchema,
   transactionPageSchema,
@@ -54,7 +61,15 @@ const attachmentImageInputSchema = z.object({
   page: z.number().int().min(1).max(50).default(1),
 })
 
-export function createFinanceMcpServer() {
+export type FinanceMcpContext =
+  | { mode: 'business' }
+  | { mode: 'personal'; workspaceId: string; tokenId: string }
+
+export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'business' }) {
+  if (context.mode === 'personal') {
+    return createPersonalFinanceMcpServer(context)
+  }
+
   const server = new McpServer({
     name: 'hidden-village-finance',
     version: '0.2.0',
@@ -227,6 +242,108 @@ export function createFinanceMcpServer() {
   )
 
   return server
+}
+
+function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mode: 'personal' }>) {
+  const server = new McpServer({
+    name: 'hidden-village-personal-finance',
+    version: '0.3.0',
+  })
+  const finance = new PersonalFinanceService({ workspaceId: context.workspaceId })
+
+  server.registerTool(
+    'list_personal_accounts',
+    {
+      title: 'List personal accounts',
+      description:
+        'List the personal bank accounts selected for tracking and their latest balances. IBANs and provider payloads are never returned.',
+      outputSchema: personalAccountsSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async () =>
+      executeOperation(async () => {
+        const result = await finance.listAccounts()
+        await recordPersonalAudit(context, 'list_personal_accounts', {}, result.accounts.length)
+        return result
+      }),
+  )
+
+  server.registerTool(
+    'search_personal_transactions',
+    {
+      title: 'Search personal transactions',
+      description:
+        'Read personal transactions using exact dates, amounts, direction, account, currency, or semantic text such as "video streaming". Results are newest first and cursor-paginated. Set includeInternalTransfers false for spending analysis.',
+      inputSchema: searchPersonalTransactionsInputSchema,
+      outputSchema: personalTransactionPageSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await finance.searchTransactions(input)
+        await recordPersonalAudit(
+          context,
+          'search_personal_transactions',
+          summarizePersonalFilters(input),
+          result.transactions.length,
+        )
+        return result
+      }),
+  )
+
+  server.registerTool(
+    'summarize_personal_spending',
+    {
+      title: 'Summarize personal spending',
+      description:
+        'Calculate deterministic gross spending, refunds, and net spending grouped by original currency. Confirmed internal transfers are excluded by default. A semantic query can scope the summary, for example "streaming services".',
+      inputSchema: personalSpendingSummaryInputSchema,
+      outputSchema: personalSpendingSummarySchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await finance.getSpendingSummary(input)
+        await recordPersonalAudit(
+          context,
+          'summarize_personal_spending',
+          summarizePersonalFilters(input),
+          result.totals.reduce((count, total) => count + total.transactionCount, 0),
+        )
+        return result
+      }),
+  )
+
+  return server
+}
+
+async function recordPersonalAudit(
+  context: Extract<FinanceMcpContext, { mode: 'personal' }>,
+  toolName: string,
+  filterSummary: Record<string, unknown>,
+  resultCount: number,
+) {
+  await createDb().insert(personalMcpAudit).values({
+    workspaceId: context.workspaceId,
+    tokenId: context.tokenId,
+    toolName,
+    filterSummary,
+    resultCount,
+  })
+}
+
+function summarizePersonalFilters(input: Record<string, unknown>) {
+  return {
+    hasQuery: typeof input.query === 'string' && input.query.length > 0,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    accountId: input.accountId,
+    currency: input.currency,
+    direction: input.direction,
+    includeInternalTransfers: input.includeInternalTransfers,
+    limit: input.limit,
+    hasCursor: typeof input.cursor === 'string',
+  }
 }
 
 async function executeOperation<T extends Record<string, unknown>>(operation: () => Promise<T>) {

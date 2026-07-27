@@ -1,5 +1,8 @@
 import { createHash, sign } from 'node:crypto'
 
+export * from './personal-search'
+export * from './personal-transfers'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +29,23 @@ export type EnableBankingBalance = {
     amount?: string
   }
   balance_type?: string
+}
+
+export type EnableBankingAspsp = {
+  name: string
+  country: string
+  logo?: string
+  beta?: boolean
+  services?: string[]
+  psu_types?: Array<'personal' | 'business'>
+  maximum_consent_validity?: number
+  auth_methods?: Array<{
+    name?: string
+    title?: string
+    psu_type?: 'personal' | 'business'
+    approach?: string
+    hidden_method?: boolean
+  }>
 }
 
 export type EnableBankingTransaction = {
@@ -103,6 +123,22 @@ export async function getEnableBankingSessionAccounts(sessionId: string) {
     `/sessions/${encodeURIComponent(sessionId)}`,
   )
   return response.accounts_data ?? []
+}
+
+export async function getEnableBankingAspsps(options: {
+  country: string
+  psuType: 'personal' | 'business'
+}) {
+  const params = new URLSearchParams({
+    country: options.country.toUpperCase(),
+    psu_type: options.psuType,
+    service: 'AIS',
+  })
+  const response = await enableBankingRequest<{ aspsps?: EnableBankingAspsp[] }>(
+    `/aspsps?${params.toString()}`,
+  )
+
+  return (response.aspsps ?? []).filter((aspsp) => aspsp.services?.includes('AIS') ?? true)
 }
 
 export async function getEnableBankingAccountDetails(accountId: string) {

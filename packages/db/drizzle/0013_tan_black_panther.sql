@@ -1,0 +1,1 @@
+ALTER TABLE "bank_connection" ADD COLUMN "encrypted_personal_payload" text;

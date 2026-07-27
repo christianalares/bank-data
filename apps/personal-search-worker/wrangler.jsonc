@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hidden-village-personal-search",
+  "account_id": "0c9175cdb56faee4d17c4ee2cc30a803",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-27",
+  "workers_dev": true,
+  "ai": {
+    "binding": "AI"
+  },
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "hidden-village-personal-transactions"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

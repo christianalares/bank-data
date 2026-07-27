@@ -1,9 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-
+import { createDb, personalMcpToken } from '@hidden-village/db'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
+import { and, eq, isNull } from 'drizzle-orm'
 
-import { getRequiredApiToken, hasValidBearerToken } from './bearer-auth'
-import { createFinanceMcpServer } from './mcp-server'
+import {
+  getBearerToken,
+  getRequiredApiToken,
+  hashPersonalMcpToken,
+  hasValidBearerToken,
+} from './bearer-auth'
+import { createFinanceMcpServer, type FinanceMcpContext } from './mcp-server'
 
 const MAX_CONTENT_LENGTH_BYTES = 1024 * 1024
 
@@ -112,7 +118,8 @@ async function handleRequest({
     return
   }
 
-  if (!hasValidBearerToken(request.headers.authorization, apiToken)) {
+  const authContext = await resolveMcpAuth(request.headers.authorization, apiToken)
+  if (!authContext) {
     response.setHeader('WWW-Authenticate', 'Bearer realm="hidden-village-finance"')
     response.setHeader('Cache-Control', 'no-store')
     sendJson(response, 401, { error: 'Unauthorized' })
@@ -132,13 +139,17 @@ async function handleRequest({
   }
 
   try {
-    await processMcpRequest(request, response)
+    await processMcpRequest(request, response, authContext)
   } finally {
     concurrencyLimiter.release()
   }
 }
 
-async function processMcpRequest(request: IncomingMessage, response: ServerResponse) {
+async function processMcpRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  authContext: FinanceMcpContext,
+) {
   let body: Buffer
 
   try {
@@ -157,7 +168,7 @@ async function processMcpRequest(request: IncomingMessage, response: ServerRespo
     headers: toWebHeaders(request),
     body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
   })
-  const mcpServer = createFinanceMcpServer()
+  const mcpServer = createFinanceMcpServer(authContext)
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -169,6 +180,56 @@ async function processMcpRequest(request: IncomingMessage, response: ServerRespo
     await writeWebResponse(response, webResponse)
   } finally {
     await mcpServer.close()
+  }
+}
+
+async function resolveMcpAuth(
+  authorization: string | string[] | undefined,
+  businessToken: string,
+): Promise<FinanceMcpContext | null> {
+  if (hasValidBearerToken(authorization, businessToken)) {
+    return { mode: 'business' }
+  }
+
+  const token = getBearerToken(authorization)
+  if (!token?.startsWith('hv_personal_')) {
+    return null
+  }
+
+  const db = createDb()
+  const stored = await db.query.personalMcpToken.findFirst({
+    where: (table, { and, eq, isNull }) =>
+      and(eq(table.tokenHash, hashPersonalMcpToken(token)), isNull(table.revokedAt)),
+  })
+
+  if (!stored) {
+    return null
+  }
+
+  const ownerWorkspace = await db.query.workspace.findFirst({
+    where: (table, { and, eq }) =>
+      and(eq(table.id, stored.workspaceId), eq(table.kind, 'personal')),
+    columns: { id: true },
+  })
+  if (!ownerWorkspace) {
+    return null
+  }
+
+  await db
+    .update(personalMcpToken)
+    .set({ lastUsedAt: new Date() })
+    .where(
+      and(
+        eq(personalMcpToken.id, stored.id),
+        eq(personalMcpToken.tokenHash, hashPersonalMcpToken(token)),
+        isNull(personalMcpToken.revokedAt),
+      ),
+    )
+
+  return {
+    mode: 'personal',
+    workspaceId: ownerWorkspace.id,
+    tokenId: stored.id,
   }
 }
 
