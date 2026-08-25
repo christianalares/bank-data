@@ -253,7 +253,11 @@ export const getTransactions = createServerFn({ method: 'GET' })
         .filter((r) => r.transactionId !== null)
         .map((r) => [r.transactionId as string, r.count]),
     )
-    const latestConnection = connections[0]
+    // A pending authorization has not produced a usable bank session yet. It
+    // must not hide the last real connection failure if the provider request
+    // stalls or the user leaves before completing consent.
+    const latestConnection =
+      connections.find((connection) => connection.status !== 'pending') ?? connections[0]
     const latestConnectionMetadata = getEnableBankingConnectionMetadata(
       latestConnection?.rawMetadata,
     )
@@ -1164,6 +1168,22 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
       throw new Error('Bank name is required')
     }
 
+    const response = await enableBankingRequest<{
+      url: string
+      authorization_id: string
+      psu_id_hash?: string
+    }>('/auth', {
+      method: 'POST',
+      body,
+    })
+
+    if (!response.url) {
+      throw new Error('Enable Banking did not return an authorization URL. Please try again.')
+    }
+
+    // Only persist an authorization attempt once the provider has returned a
+    // URL the browser can actually visit. A failed or timed-out request must
+    // not leave a ghost `pending` row that makes the UI look healthy.
     await db.insert(bankConnection).values({
       workspaceId: ownerWorkspace.id,
       provider: 'enable_banking',
@@ -1178,15 +1198,6 @@ export const startEnableBankingAuthorization = createServerFn({ method: 'POST' }
       },
       createdAt: now,
       updatedAt: now,
-    })
-
-    const response = await enableBankingRequest<{
-      url: string
-      authorization_id: string
-      psu_id_hash?: string
-    }>('/auth', {
-      method: 'POST',
-      body,
     })
 
     if (data.replaceConnectionId && workspaceKind === 'personal') {

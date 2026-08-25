@@ -2,7 +2,7 @@ import { generateKeyPairSync } from 'node:crypto'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getEnableBankingTransactions } from './index'
+import { enableBankingRequest, getEnableBankingTransactions } from './index'
 
 describe('getEnableBankingTransactions', () => {
   beforeEach(() => {
@@ -80,5 +80,19 @@ describe('getEnableBankingTransactions', () => {
 
     const url = new URL(fetchMock.mock.calls[0]?.[0] as string)
     expect(url.searchParams.get('strategy')).toBe('default')
+  })
+
+  it('bounds provider requests and reports a useful timeout', async () => {
+    const timeoutError = new Error('The operation was aborted due to timeout')
+    timeoutError.name = 'TimeoutError'
+    const fetchMock = vi.fn().mockRejectedValue(timeoutError)
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(enableBankingRequest('/auth', { timeoutMs: 25 })).rejects.toThrow(
+      'Enable Banking did not respond in time. Please try again.',
+    )
+
+    const requestOptions = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(requestOptions.signal).toBeInstanceOf(AbortSignal)
   })
 })

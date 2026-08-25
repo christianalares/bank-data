@@ -6,6 +6,8 @@ export * from './personal-transfers'
 export const ENABLE_BANKING_NO_ACCOUNTS_ERROR =
   'The bank authorized this consent but returned no accessible accounts. If Hidden Village uses restricted Enable Banking access, link this bank account to the Hidden Village application in the Enable Banking Control Panel, then reconnect and select at least one account.'
 
+const ENABLE_BANKING_REQUEST_TIMEOUT_MS = 30_000
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,17 +103,28 @@ export type NormalizedEnableBankingTransaction = {
 
 export async function enableBankingRequest<TResponse>(
   path: string,
-  options: { method?: 'GET' | 'POST'; body?: unknown } = {},
+  options: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {},
 ): Promise<TResponse> {
-  const response = await fetch(`https://api.enablebanking.com${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${createEnableBankingJwt()}`,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  })
+  let response: Response
+
+  try {
+    response = await fetch(`https://api.enablebanking.com${path}`, {
+      method: options.method ?? 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${createEnableBankingJwt()}`,
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: AbortSignal.timeout(options.timeoutMs ?? ENABLE_BANKING_REQUEST_TIMEOUT_MS),
+    })
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new Error('Enable Banking did not respond in time. Please try again.')
+    }
+
+    throw error
+  }
 
   if (!response.ok) {
     const responseText = await response.text()
