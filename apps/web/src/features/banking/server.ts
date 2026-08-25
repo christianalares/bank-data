@@ -33,7 +33,7 @@ import {
   personalTransactionSearchToken,
   tokenizePersonalSearchText,
 } from '@hidden-village/db'
-import type { syncBankingTask } from '@hidden-village/jobs'
+import type { matchPendingAttachmentsTask, syncBankingTask } from '@hidden-village/jobs'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { tasks } from '@trigger.dev/sdk'
@@ -1318,11 +1318,31 @@ export const completeEnableBankingAuthorization = createServerFn({ method: 'POST
       connectionId: connection.id,
       accounts: authorizedAccounts,
     })
+    let matchingRunId: string | null = null
+
+    if (ownerWorkspace.kind === 'business' && synced.syncedTransactions > 0) {
+      try {
+        const handle = await tasks.trigger<typeof matchPendingAttachmentsTask>(
+          'match-pending-attachments',
+          { workspaceId: ownerWorkspace.id },
+        )
+        matchingRunId = handle.id
+      } catch (error) {
+        // The bank connection and transaction import already succeeded. Keep
+        // that success truthful; the nightly banking sync remains the retry
+        // path if Trigger.dev is temporarily unavailable.
+        console.error(
+          'Failed to queue inbox matching after bank authorization',
+          error instanceof Error ? error.message : 'Unknown Trigger.dev error',
+        )
+      }
+    }
 
     return {
       ok: true as const,
       workspaceKind: ownerWorkspace.kind,
       ...synced,
+      matchingRunId,
     }
   })
 
