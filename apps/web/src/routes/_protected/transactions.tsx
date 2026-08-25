@@ -31,8 +31,8 @@ export const Route = createFileRoute('/_protected/transactions')({
 
 function TransactionsPage() {
   const { data } = useSuspenseQuery(queries.banking.transactions())
-  const [aspspName, setAspspName] = useState('')
-  const [aspspCountry, setAspspCountry] = useState('SE')
+  const [aspspName, setAspspName] = useState(data.stats.providerName ?? '')
+  const [aspspCountry, setAspspCountry] = useState(data.stats.providerCountry)
   const startAuthorizationMutation = useMutation({
     ...mutations.banking.startEnableBankingAuthorization(),
     onSuccess: (result) => {
@@ -55,7 +55,24 @@ function TransactionsPage() {
   }
 
   if (data.transactions.length > 0) {
-    return <TransactionsTable transactions={data.transactions} />
+    return (
+      <div className="flex flex-col gap-4">
+        {data.stats.connectionStatus === 'disconnected' ||
+        data.stats.connectionStatus === 'error' ? (
+          <BankConnectionNotice
+            aspspName={aspspName}
+            aspspCountry={aspspCountry}
+            errorMessage={data.stats.errorMessage}
+            lastSyncedAt={data.stats.lastSyncedAt}
+            isPending={startAuthorizationMutation.isPending}
+            onAspspNameChange={setAspspName}
+            onAspspCountryChange={setAspspCountry}
+            onSubmit={handleConnectBank}
+          />
+        ) : null}
+        <TransactionsTable transactions={data.transactions} />
+      </div>
+    )
   }
 
   return (
@@ -72,44 +89,134 @@ function TransactionsPage() {
               to date.
             </EmptyDescription>
           </EmptyHeader>
-          <form className="w-full max-w-md" onSubmit={handleConnectBank}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="aspsp-name">Bank / ASPSP name</FieldLabel>
-                <Input
-                  id="aspsp-name"
-                  value={aspspName}
-                  placeholder="Example: Skandinaviska Enskilda Banken AB (publ)"
-                  onChange={(event) => {
-                    setAspspName(event.target.value)
-                  }}
-                  required
-                />
-                <FieldDescription>
-                  Use the exact Enable Banking ASPSP name for the bank.
-                </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="aspsp-country">Country</FieldLabel>
-                <Input
-                  id="aspsp-country"
-                  value={aspspCountry}
-                  maxLength={2}
-                  onChange={(event) => {
-                    setAspspCountry(event.target.value.toUpperCase())
-                  }}
-                  required
-                />
-              </Field>
-              <Button type="submit" disabled={startAuthorizationMutation.isPending}>
-                {startAuthorizationMutation.isPending ? 'Starting connection...' : 'Connect bank'}
-              </Button>
-            </FieldGroup>
-          </form>
+          <BankConnectionForm
+            aspspName={aspspName}
+            aspspCountry={aspspCountry}
+            buttonLabel="Connect bank"
+            isPending={startAuthorizationMutation.isPending}
+            onAspspNameChange={setAspspName}
+            onAspspCountryChange={setAspspCountry}
+            onSubmit={handleConnectBank}
+          />
         </Empty>
       </CardContent>
     </Card>
   )
+}
+
+type BankConnectionFormProps = {
+  aspspName: string
+  aspspCountry: string
+  buttonLabel: string
+  isPending: boolean
+  onAspspNameChange: (value: string) => void
+  onAspspCountryChange: (value: string) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+}
+
+function BankConnectionForm({
+  aspspName,
+  aspspCountry,
+  buttonLabel,
+  isPending,
+  onAspspNameChange,
+  onAspspCountryChange,
+  onSubmit,
+}: BankConnectionFormProps) {
+  return (
+    <form className="w-full max-w-md" onSubmit={onSubmit}>
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="aspsp-name">Bank / ASPSP name</FieldLabel>
+          <Input
+            id="aspsp-name"
+            value={aspspName}
+            placeholder="Example: Skandinaviska Enskilda Banken AB (publ)"
+            onChange={(event) => onAspspNameChange(event.target.value)}
+            required
+          />
+          <FieldDescription>Use the exact Enable Banking ASPSP name for the bank.</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="aspsp-country">Country</FieldLabel>
+          <Input
+            id="aspsp-country"
+            value={aspspCountry}
+            maxLength={2}
+            onChange={(event) => onAspspCountryChange(event.target.value.toUpperCase())}
+            required
+          />
+        </Field>
+        <Button type="submit" disabled={isPending || !aspspName.trim()}>
+          {isPending ? 'Starting connection...' : buttonLabel}
+        </Button>
+      </FieldGroup>
+    </form>
+  )
+}
+
+function BankConnectionNotice({
+  aspspName,
+  aspspCountry,
+  errorMessage,
+  lastSyncedAt,
+  isPending,
+  onAspspNameChange,
+  onAspspCountryChange,
+  onSubmit,
+}: Omit<BankConnectionFormProps, 'buttonLabel'> & {
+  errorMessage: string | null
+  lastSyncedAt: string | null
+}) {
+  return (
+    <Card className="border-destructive/40 bg-destructive/5">
+      <CardHeader>
+        <CardTitle>Bank connection needs attention</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="max-w-2xl space-y-1">
+          <p className="font-medium text-destructive">Daily transaction sync has stopped.</p>
+          <p className="text-muted-foreground">
+            {getConnectionErrorMessage(errorMessage)} Reconnect the bank to import newer
+            transactions and resume daily sync.
+          </p>
+          {lastSyncedAt ? (
+            <p className="text-muted-foreground">
+              Last successful sync: {formatDateTime(lastSyncedAt)}
+            </p>
+          ) : null}
+        </div>
+        <BankConnectionForm
+          aspspName={aspspName}
+          aspspCountry={aspspCountry}
+          buttonLabel="Reconnect bank"
+          isPending={isPending}
+          onAspspNameChange={onAspspNameChange}
+          onAspspCountryChange={onAspspCountryChange}
+          onSubmit={onSubmit}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function getConnectionErrorMessage(errorMessage: string | null) {
+  if (
+    errorMessage?.includes('CLOSED_SESSION') ||
+    errorMessage?.includes('(401)') ||
+    errorMessage?.includes('(403)')
+  ) {
+    return 'The bank ended the previous authorization session.'
+  }
+
+  return errorMessage || 'The bank connection is unavailable.'
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
