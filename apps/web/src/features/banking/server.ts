@@ -254,6 +254,9 @@ export const getTransactions = createServerFn({ method: 'GET' })
         .map((r) => [r.transactionId as string, r.count]),
     )
     const latestConnection = connections[0]
+    const latestConnectionMetadata = getEnableBankingConnectionMetadata(
+      latestConnection?.rawMetadata,
+    )
 
     return {
       accounts: accounts.map((account) => ({
@@ -289,6 +292,11 @@ export const getTransactions = createServerFn({ method: 'GET' })
         connectionStatus: latestConnection?.status ?? 'disconnected',
         lastSyncedAt: latestConnection?.lastSyncedAt?.toISOString() ?? null,
         errorMessage: latestConnection?.errorMessage ?? null,
+        providerName:
+          latestConnectionMetadata?.aspsp?.name ??
+          latestConnection?.name.replace(/^Enable Banking /, '') ??
+          null,
+        providerCountry: latestConnectionMetadata?.aspsp?.country ?? 'SE',
       },
     }
   })
