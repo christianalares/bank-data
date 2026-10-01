@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-01 22:20 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-01 22:30 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 05: consent service prepared, live verification blocked
 
@@ -65,7 +65,7 @@ Never restore this dump over the original Railway Postgres service. Refresh
 the backup immediately before any later production-changing apply or
 deployment because live imports may advance the database.
 
-### Local checks and deployment boundary
+### Local checks and live MCP deployment
 
 The normal unit suite passed with 20 tests and one conditional integration
 test skipped when no local test database is configured. The conditional test
@@ -77,33 +77,59 @@ and business account activation. This is local/mock evidence, not a real
 Enable Banking or bank authorization. `pnpm build:server`, `pnpm build:web`,
 `pnpm typecheck`, `pnpm check`, `pnpm db:check`, and `pnpm test:smoke` passed.
 All Drizzle migration files remain untouched. No production migration,
-Railway apply, deployment, provider setting change, live consent, or live bank
-sync was performed.
+provider setting change, live consent, or live bank sync was performed.
 
-The Railway authoring file is prepared for an MCP-only deployment from
+The Railway authoring file uses an MCP-only deployment from
 `codex/bank-mcp-migration` with the new root build and start commands. The
 existing web service remains on its current source and commands. A fresh
 linked production plan returned three changes, all on `mcp`: source branch,
 build command, and start command. It returned zero diagnostics, no staged
 patch, and the same five current and desired resource addresses: Postgres,
 `mcp`, `web`, the Postgres volume, and the bucket. There was no planned change
-or deletion for Postgres, its volume, `web`, or the bucket. No apply was run.
-Re-run this plan and inspect all five resources before any apply.
+or deletion for Postgres, its volume, `web`, or the bucket. The existing MCP
+endpoint returned HTTP 200 for `/health` and an authenticated tool list with
+11 legacy tools before the apply.
 
-A read-only variable-name check showed that the live MCP service has
-`DATABASE_URL` and `PERSONAL_DATA_ENCRYPTION_KEY`, but lacks
-`ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY_BASE64`,
-`BANK_CONSENT_MCP_TOKEN`, `BANK_CONSENT_COOKIE_SECRET`,
-`BANK_CONSENT_REDIRECT_ORIGIN`, and both
-`BANK_CONSENT_*_WORKSPACE_ID` variables. Values were neither displayed nor
-copied. The new callback also needs registration with Enable Banking. Before
-deploying, configure those values securely, verify the registered HTTPS
-redirect, refresh the backup, and review a fresh five-resource plan. Then
-deploy only `mcp`, verify existing MCP health and tools, and have the user
-complete one authorization, account selection, and renewal in a browser.
-Verify the resulting connection and account selection in the database before
-marking Task 05 done. This browser action is the current user-dependent
-blocker.
+The MCP service had `DATABASE_URL` and `PERSONAL_DATA_ENCRYPTION_KEY` but
+lacked the provider and consent settings. The required Enable Banking
+application ID and private key were copied from the existing web service to
+`mcp` through stdin without printing their values. Separate random MCP and
+cookie secrets, the fixed HTTPS redirect origin, and both internal workspace
+IDs were set with deployment suppressed. A variable-name check confirmed all
+seven new settings. The existing MCP deployment remained unchanged until the
+reviewed plan was applied. The configuration commands did not print secret
+values, workspace IDs, or connection strings, and none were committed.
+
+The plan was pinned after the backup checksum was rechecked. The pinned apply
+changed only the three reviewed `mcp` fields. Deployment
+`71f328ca-7205-46bb-8089-bc4418e891e4` reached `SUCCESS`. A post-apply
+plan returned `No changes`, zero diagnostics, and the same five resource
+addresses. The `web` deployment remained the previous successful deployment
+`8a88ae21-4a6b-4ed9-b12b-a7ee59aaf58a`. The protected Postgres service
+retained ID `404f6fb9-da37-403f-b1f3-e8d6e2c54d60`. No web, sync,
+schema, Postgres, volume, or bucket apply was made.
+
+Live HTTP checks after deployment returned 200 for `/health`, both bearer
+scopes, and the existing `get_finance_overview` tool. The business scope
+still listed 11 legacy tools and did not expose `start_bank_consent`. The
+dedicated consent scope listed only `start_bank_consent` and
+`get_bank_consent_status`; its aggregate status tool completed successfully.
+A callback without code and state returned a generic HTTP 400. These are
+live service and read-only database checks, not a real bank authorization.
+
+The new callback URL is
+`https://hidden-village-mcp.up.railway.app/banking/callback`. It must be added
+to the existing Enable Banking application's allowed redirect URLs while
+retaining the current web callback. The Control Panel opened at its sign-in
+page, so that registration requires the user's login. Enable Banking's
+[Control Panel guide](https://enablebanking.com/docs/api/control-panel/)
+places application editing under API applications and the application's
+context menu. After the user saves the URL, initiate one consent through the
+restricted MCP tool, have the user complete bank consent and account
+selection in a browser, verify the resulting connection and selected accounts
+in Postgres, then repeat as a renewal. Do not mark Task 05 done until both
+real callback and renewal have been verified. Refresh the local backup before
+any further production-changing apply or deployment.
 
 ## Task 04: single package refactor, local verification only
 
