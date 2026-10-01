@@ -1,10 +1,10 @@
-import { createDb, gmailConnection } from '@hidden-village/db'
-import type { syncGmailInboxTask } from '@hidden-village/jobs'
 import { createServerFn } from '@tanstack/react-start'
 import { tasks } from '@trigger.dev/sdk'
 import { eq } from 'drizzle-orm'
 import { getOrCreateWorkspace } from '#/features/banking/shared'
 import { authMiddleware } from '#/lib/middleware'
+import { createDb, gmailConnection } from '#db'
+import type { syncGmailInboxTask } from '#jobs'
 
 export const getGmailConnection = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])

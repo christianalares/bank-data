@@ -1,4 +1,4 @@
-import { createDb, workspace } from '@hidden-village/db'
+import { createDb, workspace } from '#db'
 
 export type WorkspaceKind = 'business' | 'personal'
 

@@ -1,5 +1,10 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-
+import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
+import { tasks } from '@trigger.dev/sdk'
+import { and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { getOrCreateWorkspace, type WorkspaceKind } from '#/features/banking/shared'
+import { authMiddleware } from '#/lib/middleware'
 import {
   createEnableBankingInternalId,
   ENABLE_BANKING_NO_ACCOUNTS_ERROR,
@@ -15,7 +20,7 @@ import {
   pickEnableBankingBalance,
   searchPersonalTransactionVectors,
   upsertPersonalTransactionVector,
-} from '@hidden-village/banking'
+} from '#banking'
 import {
   attachment,
   bankAccount,
@@ -32,15 +37,8 @@ import {
   personalMcpToken,
   personalTransactionSearchToken,
   tokenizePersonalSearchText,
-} from '@hidden-village/db'
-import type { matchPendingAttachmentsTask, syncBankingTask } from '@hidden-village/jobs'
-import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
-import { tasks } from '@trigger.dev/sdk'
-import { and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm'
-
-import { getOrCreateWorkspace, type WorkspaceKind } from '#/features/banking/shared'
-import { authMiddleware } from '#/lib/middleware'
+} from '#db'
+import type { matchPendingAttachmentsTask, syncBankingTask } from '#jobs'
 
 type ImportCsvInput = {
   csv: string

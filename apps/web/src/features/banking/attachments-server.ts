@@ -1,16 +1,3 @@
-import {
-  attachmentSelectSchema,
-  bankTransactionSelectSchema,
-  createDb,
-  type DatabaseTable,
-} from '@hidden-village/db'
-import {
-  attachment,
-  attachmentSuggestionDismissal,
-  bankTransaction,
-} from '@hidden-village/db/schema'
-import type { processAttachmentTask } from '@hidden-village/jobs'
-import { createStorageClient } from '@hidden-village/storage'
 import { createServerFn } from '@tanstack/react-start'
 import { tasks } from '@trigger.dev/sdk'
 import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
@@ -18,6 +5,15 @@ import { z } from 'zod'
 import { getOrCreateWorkspace } from '#/features/banking/shared'
 import { authMiddleware } from '#/lib/middleware'
 import { createShortId } from '#/lib/short-id'
+import {
+  attachmentSelectSchema,
+  bankTransactionSelectSchema,
+  createDb,
+  type DatabaseTable,
+} from '#db'
+import { attachment, attachmentSuggestionDismissal, bankTransaction } from '#db/schema'
+import type { processAttachmentTask } from '#jobs'
+import { createStorageClient } from '#storage'
 
 const attachmentIdSchema = z.object({ attachmentId: attachmentSelectSchema.shape.id })
 const transactionIdSchema = z.object({ transactionId: bankTransactionSelectSchema.shape.id })

@@ -1,6 +1,68 @@
 # Migration notes and handoff
 
-Updated: 2026-10-01 21:53 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-01 22:08 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 04: single package refactor, local verification only
+
+Tasks 01 through 03 were marked done in `PLAN.md` before this task. The
+checkout was clean at `ed19201`, and a fresh fetch confirmed that the local
+branch matched `origin/codex/bank-mcp-migration`. The effective context allowed
+filesystem and network access with approval policy `never`; no approval or
+automatic approval was requested. `bd prime` again failed because `bd` is not
+installed, so this plan and notes remain the task ledger.
+
+There is now one application `package.json` at the repository root. The MCP,
+provider, database, finance, storage, auth, jobs, and utility source moved
+under `src/`. The legacy web routes remain in `apps/web/src` so the Enable
+Banking callback and account selection path are available for Task 05. The
+existing Trigger task and schedule remain in `src/jobs/tasks/sync-banking.ts`
+for Task 06. Its run body is shared with the separate `src/sync/index.ts` entry
+point; this is a code path for future cron use, not a deployed replacement for
+Trigger. Root scripts replace Turbo and pnpm workspace filters. The lockfile
+has only the root importer, and direct dependencies that drifted during the
+first install were pinned to their previous locked versions. The previous MCP
+HTTP tool implementations, authentication rules, and personal finance
+paging code were retained. The provider still requests `BOOK` and removes
+returned `PDNG` entries. A new test covers pending entries on both pages of a
+provider response.
+
+All 31 files moved from `packages/db/drizzle` to `drizzle` match their blobs in
+pre-refactor commit `ed19201` byte for byte, including all 15 SQL migrations,
+15 snapshots, and
+`meta/_journal.json`. `pnpm db:check` passed. A fresh, temporary Postgres 17
+container with a temporary data directory accepted `pnpm db:migrate:prod` with
+`DATABASE_URL` explicitly set to `127.0.0.1:55433`. The resulting
+`drizzle.__drizzle_migrations` table contained 15 rows and ended at
+`1785165647982`, matching the live journal version recorded in Task 01. A
+second temporary local database accepted the migrations and the built sync
+entry point returned zero connections, accounts, and transactions, then exited
+successfully. The first empty sync run exposed an open client connection; the
+new entry point now closes that connection in a `finally` block. Final checks
+repeated the migration and empty sync against another isolated local database.
+All temporary Postgres containers were stopped and removed.
+
+Local checks passed: `pnpm build:server`, `pnpm build:web`, `pnpm test`
+(6 files, 18 tests), `pnpm typecheck` (root and legacy web), `pnpm check`,
+`pnpm db:check`, and `pnpm test:smoke`. The smoke test starts the built MCP
+HTTP process without a database URL, checks `/health`, verifies that `/mcp`
+requires a bearer token, and invokes the built sync entry point with `--help`.
+Against a temporary local Postgres database, the final built web process
+served `/login` with HTTP 200. An unauthenticated request to the legacy bank
+callback redirected to `/login` with the expected missing-parameter error in
+the redirect target. These checks did not supply a provider authorization code.
+The first unlocked dependency install produced a Zod `validate` export warning;
+pinning the previously locked versions removed that warning in the final full
+build. An authenticated web and consent flow check remains necessary before
+cutover.
+
+No provider request, live bank sync, MCP transaction tool call, consent flow,
+production migration, Railway apply, deployment, data change, provider setting
+change, or Raycast change was performed. These local checks do not prove bank
+data completeness or equivalent sync behavior. The existing
+`.railway/railway.ts` resource graph and commands are untouched. Its legacy
+workspace commands need a reviewed update before deployment; do not apply a
+production-changing plan while the usable backup and tested restore gate from
+Task 01 remains open. The new `railway.mcp.toml` has no pre-deploy migration.
 
 ## Task 03: Railway configuration import and no-change plan
 
@@ -241,8 +303,10 @@ issue or state was changed; this plan and note carry the task status.
 
 ## Verified so far
 
-- The branch was created from clean `main` at commit `6b40750`. No application,
-  database, Railway, Raycast, or provider changes have been made in this branch.
+- The branch was created from clean `main` at commit `6b40750`. Tasks 01 through
+  03 changed documentation and imported Railway configuration. Task 04 changed
+  local application source and build tooling without a deployment or live data
+  change.
 - `railway list --json` showed a `hidden-village` project with one `production`
   environment and three named services: `Postgres`, `mcp`, and `web`. Task 01
   verified their current deployment state and database aggregates above.
@@ -279,8 +343,11 @@ issue or state was changed; this plan and note carry the task status.
 
 ## Next safe step
 
-Tasks 01 through 03 are complete. Establish and test a usable backup and
+Tasks 01 through 04 are complete. Establish and test a usable backup and
 restore procedure for the protected Postgres service before any later
-infrastructure apply, schema change, cleanup, or cutover. Task 04 can proceed
-as a local code refactor without deployment. Do not remove the web app while
-the database and consent path are unverified.
+infrastructure apply, schema change, cleanup, or cutover. Task 05 can develop
+the consent path locally, but the current web callback must remain until a
+complete authorization and renewal flow has been verified. Before deployment,
+review the Railway resource graph, update its legacy build and start commands,
+and inspect a fresh plan for every existing resource, especially Postgres and
+its volume.

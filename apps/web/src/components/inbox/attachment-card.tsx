@@ -1,9 +1,8 @@
-import type { DatabaseTable } from '@hidden-village/db'
 import type * as React from 'react'
-
 import { PdfThumbnail } from '#/components/pdf-thumbnail'
 import { Icon } from '#/components/ui/icon'
 import { Skeleton } from '#/components/ui/skeleton'
+import type { DatabaseTable } from '#db'
 import { Button } from '../ui/button'
 
 type TransactionSummary = Pick<

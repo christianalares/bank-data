@@ -1,5 +1,5 @@
-import { auth } from '@hidden-village/auth'
 import { getRequest } from '@tanstack/react-start/server'
+import { auth } from '#auth'
 
 export async function fetchSession() {
   const request = getRequest()

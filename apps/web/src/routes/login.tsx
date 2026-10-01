@@ -1,8 +1,6 @@
-import { authClient } from '@hidden-village/auth/client'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-
 import { Button } from '#/components/ui/button'
 import {
   Card,
@@ -15,6 +13,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { getCurrentSession } from '#/lib/session'
+import { authClient } from '#auth/client'
 
 export const Route = createFileRoute('/login')({
   validateSearch: (search): { redirect?: string } => ({

@@ -1,5 +1,5 @@
-import { auth } from '@hidden-village/auth'
 import { createFileRoute } from '@tanstack/react-router'
+import { auth } from '#auth'
 
 export const Route = createFileRoute('/api/auth/$')({
   server: {

@@ -51,7 +51,7 @@ can inspect.
 | 01 | done | Live Railway and read-only database inventory recorded in `NOTES.md` on 2026-10-01. Service IDs, deployment/configuration state, anonymized row counts, booked date bounds, and live Drizzle version are verified. No usable backup or restore point was verified; this blocks later production changes until resolved. |
 | 02 | done | Read-only comparison recorded in `NOTES.md` on 2026-10-01. One personal account is excluded, four connections are disconnected (one retains 128 booked rows), no pending rows or repeated provider transaction keys were found, and one booked pair needs private review as a possible duplicate. Cleanup is proposed separately; no production rows changed. |
 | 03 | done | Imported all five live Railway resources into `.railway/railway.ts` and recorded their verified IDs in `NOTES.md` on 2026-10-01. The production plan reported `No changes`, zero actions and diagnostics, and no staged patch. Postgres service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60` and its existing volume remain in the plan. No apply was run; a usable backup and tested restore remain required before any production-changing apply. |
-| 04 | pending | Refactor to one application package with `src/mcp`, `src/banking`, and `src/db`, plus separate MCP and sync entry points. Preserve Drizzle SQL files and migration journal exactly. Remove Turbo and workspace tooling only after equivalent build, test, and migrate commands work. |
+| 04 | done | One root application package now has `src/mcp`, `src/banking`, and `src/db`, with separate MCP and sync entry points. All 31 Drizzle files match the previous revision byte for byte. Root build, 18 tests, typechecks, Biome, an MCP smoke test, and a fresh local Postgres migration with 15 journal rows passed. See `NOTES.md` for limits and deployment gates. |
 | 05 | pending | Move Enable Banking consent initiation, callback completion, account selection, and connection status into the new service. Verify one complete authorization and renewal flow without the web app. Do not expose provider credentials or authorization codes to MCP clients. |
 | 06 | pending | Move bank sync from Trigger.dev to a Railway cron process. Preserve pagination, booked-only filtering, stable IDs, upserts, balances, retries, transient failure handling, and consent-expiry status. Ensure the process exits after each run and reports its last success. |
 | 07 | pending | Expose read-only MCP tools for every selected personal and company account. Support account/date filters and cursor pagination, and report data freshness and incomplete pages. Ensure results and totals use booked transactions only. Verify authorization limits and audit logging. |
@@ -82,12 +82,13 @@ can inspect.
 
 ## Source pointers
 
-- Current MCP: `apps/mcp/src/`, `apps/mcp/railway.toml`.
-- Provider client and booked-only filter: `packages/banking/src/index.ts`.
-- Current bank cron and import: `packages/jobs/src/tasks/sync-banking.ts`.
-- Drizzle schema and migrations: `packages/db/src/`, `packages/db/drizzle/`.
-- Personal MCP paging: `packages/finance/src/personal-schemas.ts` and
-  `packages/finance/src/personal-service.ts`.
+- Current MCP: `src/mcp/`, `railway.mcp.toml`.
+- Provider client and booked-only filter: `src/banking/index.ts`.
+- Current bank cron and import: `src/jobs/tasks/sync-banking.ts`; standalone
+  entry point: `src/sync/index.ts`.
+- Drizzle schema and migrations: `src/db/`, `drizzle/`.
+- Personal MCP paging: `src/finance/personal-schemas.ts` and
+  `src/finance/personal-service.ts`.
 - Current consent callback: `apps/web/src/routes/api/banking/enable-banking/callback.ts`.
 - Kodiak conventions: `/Users/christian/dev/kodiak/kodiak-platform/AGENTS.md`,
   `biome.json`, and `.railway/railway.ts`.
