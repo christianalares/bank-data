@@ -1,6 +1,6 @@
-import { auth } from '@bank-data/auth'
 import { createFileRoute } from '@tanstack/react-router'
 import { google } from 'googleapis'
+import { auth } from '#auth'
 
 function getAuthUrl(): string {
   const client = new google.auth.OAuth2(

@@ -1,11 +1,11 @@
-import { auth } from '@bank-data/auth'
-import { createDb, gmailConnection } from '@bank-data/db'
-import type { syncGmailInboxTask } from '@bank-data/jobs'
 import { createFileRoute } from '@tanstack/react-router'
 import { tasks } from '@trigger.dev/sdk'
 import { google } from 'googleapis'
 import { getOrCreateWorkspace } from '#/features/banking/shared'
 import { encrypt } from '#/lib/crypto'
+import { auth } from '#auth'
+import { createDb, gmailConnection } from '#db'
+import type { syncGmailInboxTask } from '#jobs'
 
 async function exchangeCode(code: string) {
   const client = new google.auth.OAuth2(

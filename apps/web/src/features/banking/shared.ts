@@ -1,4 +1,4 @@
-import { createDb, workspace } from '@bank-data/db'
+import { createDb, workspace } from '#db'
 
 export type WorkspaceKind = 'business' | 'personal'
 
