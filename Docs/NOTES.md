@@ -1,6 +1,70 @@
 # Migration notes and handoff
 
-Updated: 2026-10-01 21:47 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-01 21:53 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 03: Railway configuration import and no-change plan
+
+Evidence captured on 2026-10-01 with Railway CLI 5.49.6. Tasks 01 and 02
+were recorded as done before this work. The clean checkout on
+`codex/bank-mcp-migration` matched `origin/codex/bank-mcp-migration` after a
+fresh fetch. Filesystem reads and writes, the remote fetch, and read-only
+Railway calls worked with network access and approval policy `never`. No
+approval or automatic approval was requested.
+
+The existing `hidden-village` project was linked only in a temporary working
+directory for `railway config pull`. The import was copied into this checkout
+as `.railway/railway.ts`; no Railway project-link file was added to the repo.
+The source is constrained to project `c6c36c86-d6c0-4c07-b181-d903db2e3b7b`
+and production environment `b9e7fc05-5205-4f40-be2d-f6e160aa2d18`.
+Railway's SDK reconciles resources by graph address and keeps remote IDs in its
+binding state. The imported addresses were checked against fresh Railway
+status IDs:
+
+| Imported resource and graph address | Verified live identity |
+| --- | --- |
+| `Postgres`, `database.Postgres` | Service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60` |
+| `mcp`, `service.mcp` | Service `ac79bd9a-021b-4bdb-95a8-40bdaca72393` |
+| `web`, `service.web` | Service `c0f5fbc3-2e22-4401-ade8-68671c3a5496` |
+| `postgres-volume-r7JC`, `volume.postgres-volume-r7JC` | Volume `ecb799b2-792d-491d-bef4-796be65bd259` |
+| `bucket`, `bucket.bucket` | Bucket `561c0021-6adc-458f-8640-ce0525d09b4d` |
+
+The volume's production instance is
+`9810bac8-ee35-418a-9330-da0c2487e659`, attached to Postgres service
+`404f6fb9-da37-403f-b1f3-e8d6e2c54d60` at
+`/var/lib/postgresql/data`. Its live state was `READY`, size 5,000 MB,
+236.37 MB used, with no pending deletion. The bucket was present in fresh
+Railway status although it was not listed in Task 01's service table; omitting
+it from the IaC source would risk a later deletion.
+
+The import retains current source, build, start, pre-deploy, replica,
+networking, database, volume, bucket, and variable definitions. Existing
+application variable names use `preserve()`; no variable values, credentials,
+or connection strings were decrypted, printed, or committed. The root now
+pins the `railway` SDK at 3.12.0 so the config can be planned from this
+checkout. Biome includes the new file.
+
+The final `railway config plan --json --detailed-exit-code --file
+/Users/christian/dev/own/hidden-village/.railway/railway.ts` targeted the
+verified production IDs and exited 0. It reported `No changes`, an empty
+change set, zero diagnostics, and no staged patch. Both current and desired
+graphs contained exactly the five addresses above. In that reviewed snapshot,
+there was no deletion, replacement, reset, or other change for Postgres, its
+volume, `mcp`, `web`, or the bucket. Re-run and review a fresh plan before any
+future apply because live state may drift.
+
+The current and desired graphs are not byte-for-byte equal. The generated
+source leaves some live fields unspecified, including application public
+domains, explicit Railpack build environment, runtime flags, and the Postgres
+required mount path. In this plan the engine treated those omissions as
+preserved and still reports zero actions. This source therefore relies on
+Railway's sparse import semantics; inspect these fields again in a fresh plan
+before any apply.
+
+No config apply, infrastructure change, deployment, migration, data change,
+provider setting change, or Raycast change was made. There is still no
+verified usable backup or tested restore, so **do not apply a
+production-changing plan** until that gate is resolved. `bd prime` remains
+unavailable because `bd` is not installed; no beads state was changed.
 
 ## Task 02: read-only database and repository comparison
 
@@ -215,7 +279,8 @@ issue or state was changed; this plan and note carry the task status.
 
 ## Next safe step
 
-Task 02 is complete. Establish and test a usable backup and restore procedure
-for the protected Postgres service before any later infrastructure apply,
-schema change, cleanup, or cutover. Task 03 remains pending. Do not remove the
-web app while the database and consent path are unverified.
+Tasks 01 through 03 are complete. Establish and test a usable backup and
+restore procedure for the protected Postgres service before any later
+infrastructure apply, schema change, cleanup, or cutover. Task 04 can proceed
+as a local code refactor without deployment. Do not remove the web app while
+the database and consent path are unverified.

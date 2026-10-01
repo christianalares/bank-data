@@ -10,6 +10,7 @@
     "includes": [
       "apps/**/src/**/*",
       "packages/**/src/**/*",
+      ".railway/railway.ts",
       "**/.vscode/**/*",
       "**/index.html",
       "**/vite.config.ts",
