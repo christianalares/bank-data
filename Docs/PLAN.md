@@ -48,7 +48,7 @@ can inspect.
 
 | ID | Status | Task and acceptance evidence |
 | --- | --- | --- |
-| 01 | pending | Inventory the live Railway project, service configuration, deployment state, and database. Record service IDs, row counts by workspace/account/status, oldest and newest booked dates, migration version, and backup or restore path. Do not print transaction content or secrets. |
+| 01 | done | Live Railway and read-only database inventory recorded in `NOTES.md` on 2026-10-01. Service IDs, deployment/configuration state, anonymized row counts, booked date bounds, and live Drizzle version are verified. No usable backup or restore point was verified; this blocks later production changes until resolved. |
 | 02 | pending | Compare the live database against the current repository. Identify accounts not selected for import, stale connections, older pending rows, and possible duplicate booked rows. Propose any data cleanup separately before changing production rows. |
 | 03 | pending | Import existing Railway configuration into `.railway/railway.ts`. Include the current Postgres resource by its verified identity. Review a plan that preserves the database and current services before applying anything. Keep secrets out of source. |
 | 04 | pending | Refactor to one application package with `src/mcp`, `src/banking`, and `src/db`, plus separate MCP and sync entry points. Preserve Drizzle SQL files and migration journal exactly. Remove Turbo and workspace tooling only after equivalent build, test, and migrate commands work. |
