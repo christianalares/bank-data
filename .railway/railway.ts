@@ -18,6 +18,10 @@ export default defineRailway((context) => {
   }
 
   const hiddenVillage = github('christianalares/hidden-village', { checkSuites: false })
+  const migrationBranch = github('christianalares/hidden-village', {
+    branch: 'codex/bank-mcp-migration',
+    checkSuites: false,
+  })
 
   // Existing service 404f6fb9-da37-403f-b1f3-e8d6e2c54d60. Railway binds
   // this resource by database.Postgres; preserve that address and its volume.
@@ -36,9 +40,9 @@ export default defineRailway((context) => {
   const bucketResource = bucket('bucket', { region: 'ams' })
   // Existing service ac79bd9a-021b-4bdb-95a8-40bdaca72393.
   const mcp = service('mcp', {
-    source: hiddenVillage,
-    build: 'pnpm --filter @hidden-village/mcp build',
-    start: 'pnpm --filter @hidden-village/mcp start',
+    source: migrationBranch,
+    build: 'pnpm build:server',
+    start: 'pnpm start:mcp',
     replicas: { 'europe-west4-drams3a': 1 },
     env: {
       AWS_ACCESS_KEY_ID: preserve(),
@@ -46,8 +50,15 @@ export default defineRailway((context) => {
       AWS_ENDPOINT_URL: preserve(),
       AWS_S3_BUCKET_NAME: preserve(),
       AWS_SECRET_ACCESS_KEY: preserve(),
+      BANK_CONSENT_BUSINESS_WORKSPACE_ID: preserve(),
+      BANK_CONSENT_COOKIE_SECRET: preserve(),
+      BANK_CONSENT_MCP_TOKEN: preserve(),
+      BANK_CONSENT_PERSONAL_WORKSPACE_ID: preserve(),
+      BANK_CONSENT_REDIRECT_ORIGIN: preserve(),
       DATABASE_STATEMENT_TIMEOUT_MS: preserve(),
       DATABASE_URL: preserve(),
+      ENABLE_BANKING_APPLICATION_ID: preserve(),
+      ENABLE_BANKING_PRIVATE_KEY_BASE64: preserve(),
       MCP_ALLOWED_HOSTS: preserve(),
       MCP_API_TOKEN: preserve(),
       MCP_TRANSPORT: preserve(),

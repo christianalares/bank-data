@@ -1,6 +1,109 @@
 # Migration notes and handoff
 
-Updated: 2026-10-01 22:08 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-01 22:20 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 05: consent service prepared, live verification blocked
+
+The clean branch matched `origin/codex/bank-mcp-migration` at `0e682ce`
+after a fresh fetch. Tasks 01 through 04 were checked against this plan and
+the checkout before editing. Filesystem and network access were effective,
+with approval policy `never`. `bd prime` was unavailable because `bd` is not
+installed, so the Docs ledger records this task.
+
+The MCP HTTP service now accepts a dedicated `BANK_CONSENT_MCP_TOKEN` that must
+be distinct from `MCP_API_TOKEN`. That context exposes only
+`start_bank_consent` and `get_bank_consent_status`. The initiation result has
+one field, the authorization URL. The status result contains aggregate counts
+by workspace kind and no bank, connection, or account identifiers. The
+service uses configured internal workspace IDs and a fixed redirect origin;
+neither is supplied by an MCP client. The new callback is
+`/banking/callback` on the MCP HTTP service. It exchanges the code on the
+server, stores the session, and either activates business accounts or sends
+the browser to a minimal account-selection form. The form uses a signed,
+short-lived, HTTP-only cookie with a secret distinct from the MCP bearer
+token, checks the POST origin, and activates selected
+personal accounts. Renewal copies selection for matching provider accounts
+and disconnects the previous connection only when the replacement is active.
+The new handlers do not write codes, provider credentials, tokens, connection
+strings, or account IDs to MCP results or logs. Personal account and
+session payloads are encrypted in Postgres. The old web consent route,
+Trigger import, and current MCP tools remain in source. The new callback
+does not import transactions; the existing sync path can pick up active
+selected accounts until Task 06 replaces it.
+
+### Backup and isolated restore
+
+Fresh Railway status still identified the protected Postgres service as
+`404f6fb9-da37-403f-b1f3-e8d6e2c54d60`. PITR remained disabled and
+`bucketWired=false`. An additive on-demand `railway postgres pitr backup
+create` returned `Failed to create a backup` and created no new listed backup.
+No original service or volume was changed. A custom-format `pg_dump` was then
+streamed through Railway SSH directly into a local file without printing its
+contents or connection string. The retained file is
+`/Users/christian/.local/share/hidden-village/backups/2026-10-02-pre-task-05.dump`.
+Its directory is mode `0700`, the file is mode `0600`, its size is 3,908,033
+bytes, and SHA-256 is
+`5d62015908a4302d52cbe0aacfe91077140d8e3c21f4caa5e7d8be82f084065b`.
+It is outside the repository and contains sensitive production data. This is
+a retained local backup, not a Railway-managed or offsite backup.
+
+The dump restored without error into a disposable local PostgreSQL 18
+container using `pg_restore --no-owner --no-acl`. Read-only aggregate checks
+in that isolated container returned 7 bank connections, 8 bank accounts,
+2,762 bank transactions, and 15 Drizzle migration rows, matching the Task 01
+snapshot. The test container was stopped and removed. The tested restore
+procedure, using only a disposable local container, is:
+
+```bash
+docker run --rm -d --name hv-restore-check -e POSTGRES_PASSWORD=local-restore-test postgres:18
+docker exec -i hv-restore-check pg_restore -U postgres -d postgres --no-owner --no-acl < /Users/christian/.local/share/hidden-village/backups/2026-10-02-pre-task-05.dump
+docker exec hv-restore-check psql -U postgres -d postgres -Atc "select 'connections=' || count(*) from bank_connection union all select 'accounts=' || count(*) from bank_account union all select 'transactions=' || count(*) from bank_transaction union all select 'migrations=' || count(*) from drizzle.__drizzle_migrations order by 1"
+docker stop hv-restore-check
+```
+
+Never restore this dump over the original Railway Postgres service. Refresh
+the backup immediately before any later production-changing apply or
+deployment because live imports may advance the database.
+
+### Local checks and deployment boundary
+
+The normal unit suite passed with 20 tests and one conditional integration
+test skipped when no local test database is configured. The conditional test
+was run separately against a fresh local PostgreSQL 18 database after all 15
+migrations were applied. Its three tests passed with mocked Enable Banking
+responses. They exercised restricted MCP tool listing, initiation, callback,
+personal account selection, renewal, replay rejection, POST origin rejection,
+and business account activation. This is local/mock evidence, not a real
+Enable Banking or bank authorization. `pnpm build:server`, `pnpm build:web`,
+`pnpm typecheck`, `pnpm check`, `pnpm db:check`, and `pnpm test:smoke` passed.
+All Drizzle migration files remain untouched. No production migration,
+Railway apply, deployment, provider setting change, live consent, or live bank
+sync was performed.
+
+The Railway authoring file is prepared for an MCP-only deployment from
+`codex/bank-mcp-migration` with the new root build and start commands. The
+existing web service remains on its current source and commands. A fresh
+linked production plan returned three changes, all on `mcp`: source branch,
+build command, and start command. It returned zero diagnostics, no staged
+patch, and the same five current and desired resource addresses: Postgres,
+`mcp`, `web`, the Postgres volume, and the bucket. There was no planned change
+or deletion for Postgres, its volume, `web`, or the bucket. No apply was run.
+Re-run this plan and inspect all five resources before any apply.
+
+A read-only variable-name check showed that the live MCP service has
+`DATABASE_URL` and `PERSONAL_DATA_ENCRYPTION_KEY`, but lacks
+`ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY_BASE64`,
+`BANK_CONSENT_MCP_TOKEN`, `BANK_CONSENT_COOKIE_SECRET`,
+`BANK_CONSENT_REDIRECT_ORIGIN`, and both
+`BANK_CONSENT_*_WORKSPACE_ID` variables. Values were neither displayed nor
+copied. The new callback also needs registration with Enable Banking. Before
+deploying, configure those values securely, verify the registered HTTPS
+redirect, refresh the backup, and review a fresh five-resource plan. Then
+deploy only `mcp`, verify existing MCP health and tools, and have the user
+complete one authorization, account selection, and renewal in a browser.
+Verify the resulting connection and account selection in the database before
+marking Task 05 done. This browser action is the current user-dependent
+blocker.
 
 ## Task 04: single package refactor, local verification only
 

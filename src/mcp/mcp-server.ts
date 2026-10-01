@@ -21,6 +21,7 @@ import {
   transactionPageSchema,
 } from '#finance'
 import { createStorageClient } from '#storage'
+import { getBankConsentStatus, startBankConsent } from '../banking/consent-service'
 
 import { renderAttachmentImage } from './attachment-image'
 
@@ -64,8 +65,13 @@ const attachmentImageInputSchema = z.object({
 export type FinanceMcpContext =
   | { mode: 'business' }
   | { mode: 'personal'; workspaceId: string; tokenId: string }
+  | { mode: 'consent' }
 
 export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'business' }) {
+  if (context.mode === 'consent') {
+    return createBankConsentMcpServer()
+  }
+
   if (context.mode === 'personal') {
     return createPersonalFinanceMcpServer(context)
   }
@@ -239,6 +245,73 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
       annotations: destructiveMutationAnnotations,
     },
     async ({ attachmentId }) => executeOperation(() => finance.ignoreAttachment(attachmentId)),
+  )
+
+  return server
+}
+
+function createBankConsentMcpServer() {
+  const server = new McpServer({ name: 'hidden-village-bank-consent', version: '0.1.0' })
+
+  server.registerTool(
+    'start_bank_consent',
+    {
+      title: 'Start bank consent',
+      description:
+        'Start or renew read-only bank access. Open the returned authorization URL in your browser. Account selection happens after the bank redirects back.',
+      inputSchema: {
+        workspaceKind: z.enum(['personal', 'business']),
+        aspspName: z.string().trim().min(1).max(150),
+        aspspCountry: z.string().length(2).default('SE'),
+        authMethod: z.string().trim().max(150).optional(),
+        renew: z.boolean().default(false),
+      },
+      outputSchema: z.object({ url: z.string().url() }),
+      annotations: { ...mutationAnnotations, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        const result = await startBankConsent(input)
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        }
+      } catch {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: 'Bank consent could not be started. Check the bank and consent configuration.',
+            },
+          ],
+          isError: true,
+        }
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_bank_consent_status',
+    {
+      title: 'Get bank consent status',
+      description:
+        'Show aggregate connection health by workspace. No bank or account identifiers are returned.',
+      annotations: readOnlyAnnotations,
+    },
+    async () => {
+      try {
+        const result = await getBankConsentStatus()
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        }
+      } catch {
+        return {
+          content: [{ type: 'text' as const, text: 'Bank consent status is unavailable.' }],
+          isError: true,
+        }
+      }
+    },
   )
 
   return server

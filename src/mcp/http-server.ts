@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { and, eq, isNull } from 'drizzle-orm'
 import { createDb, personalMcpToken } from '#db'
+import { getConsentToken } from '../banking/consent-service'
 
 import {
   getBearerToken,
@@ -9,6 +10,7 @@ import {
   hashPersonalMcpToken,
   hasValidBearerToken,
 } from './bearer-auth'
+import { handleBankConsentHttp } from './consent-http'
 import { createFinanceMcpServer, type FinanceMcpContext } from './mcp-server'
 
 const MAX_CONTENT_LENGTH_BYTES = 1024 * 1024
@@ -33,7 +35,11 @@ export async function startHttpServer() {
         concurrencyLimiter,
       })
     } catch (error) {
-      console.error(error)
+      if (request.url?.startsWith('/banking/')) {
+        console.error('Bank consent request failed')
+      } else {
+        console.error(error)
+      }
 
       if (!response.headersSent) {
         sendJson(response, 500, { error: 'Internal server error' })
@@ -100,6 +106,15 @@ async function handleRequest({
 
   if (url.pathname === '/health' && request.method === 'GET') {
     sendJson(response, 200, { status: 'ok' })
+    return
+  }
+
+  if (url.pathname.startsWith('/banking/')) {
+    if (!hasAllowedHost(request, allowedHosts)) {
+      sendJson(response, 421, { error: 'Misdirected request' })
+      return
+    }
+    await handleBankConsentHttp(request, response, url)
     return
   }
 
@@ -187,6 +202,11 @@ async function resolveMcpAuth(
   authorization: string | string[] | undefined,
   businessToken: string,
 ): Promise<FinanceMcpContext | null> {
+  const consentToken = process.env.BANK_CONSENT_MCP_TOKEN?.trim()
+  if (consentToken && hasValidBearerToken(authorization, getConsentToken())) {
+    return { mode: 'consent' }
+  }
+
   if (hasValidBearerToken(authorization, businessToken)) {
     return { mode: 'business' }
   }
