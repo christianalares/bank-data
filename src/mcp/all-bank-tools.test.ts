@@ -32,6 +32,10 @@ describe('all-bank MCP scope', () => {
         'summarize_all_bank_transactions',
       ])
       expect(result.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true)
+      expect(
+        result.tools.find((tool) => tool.name === 'list_all_bank_transactions')?.inputSchema
+          .properties,
+      ).toHaveProperty('workspaceKind')
     } finally {
       await client.close()
       await server.close()
