@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 02:33 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 02:36 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 08: Executor and Raycast acceptance in progress
 
@@ -50,8 +50,10 @@ returned two rows, `incompletePage=true`, and a continuation cursor. The
 chat was instructed to report counts only, though an earlier automatically
 generated response also displayed balances in the local Raycast UI. Do not
 repeat those values in task output. The `Executor` Raycast entry starts and
-shows its seven current tools, but the bank path through it remains untested
-until the new Executor connection is saved.
+shows its seven current tools. An actual Raycast `@executor` call to
+`connections.list` reported zero saved `hidden_village_bank` connections,
+confirming that route works without claiming bank-tool acceptance. The bank
+path through it remains untested until the new Executor connection is saved.
 
 The older direct `Hidden Village` Raycast entry is configured for the same
 production MCP URL with no HTTP header in its editor. Starting it failed with
