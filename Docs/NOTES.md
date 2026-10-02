@@ -1097,3 +1097,21 @@ Executor `accountId`-filtered totals returned 459 booked rows for the personal
 Revolut account and 138 for the shared Revolut account, summing to the 597
 Revolut total. The tool descriptions now say that `bankName=Revolut` includes
 both accounts and that an individual account needs its stable `accountId`.
+
+After the user approved a refresh, Executor's `allBanks` tool schema exposed
+the new `workspaceKind` filter. Live filtered totals returned 2,554 personal
+and 222 business booked rows. A business-filtered request can therefore avoid
+mixing SEB with personal Nordea and Revolut results.
+
+The user logged into the current business Transactions page to continue an
+apparent SEB renewal. The page showed a 429
+`ASPSP_RATE_LIMIT_EXCEEDED` error, although its generic UI offered "Reconnect
+bank." A read-only production DB query found one active business connection
+with two included accounts, last successful sync 2026-10-02 01:01 UTC, and
+consent valid until 2026-11-22 07:53 UTC. The other two business connections
+are disconnected historical records, one with two included accounts and one
+with no accounts. This is a rate-limited background fetch rather than an
+expired authorization. No new consent was started. The bank-sync service is
+scheduled for 02:00 UTC daily, so Task 09 should check the 2026-10-03 run
+for recovery before considering reauthorization. The older business and
+personal Executor connections remain in place for their existing consumers.
