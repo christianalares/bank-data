@@ -142,6 +142,7 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
     const listed = (await toolsResponse.json()) as { result: { tools: Array<{ name: string }> } }
     expect(listed.result.tools.map((tool) => tool.name).sort()).toEqual([
       'get_bank_consent_status',
+      'recover_bank_selection',
       'start_bank_consent',
     ])
     const businessToolsResponse = await originalFetch(`http://127.0.0.1:${port}/mcp`, {
@@ -272,10 +273,34 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
       { redirect: 'manual' },
     )
     expect(renewalCallback.status).toBe(303)
-    const renewalCookie = renewalCallback.headers.get('set-cookie')?.split(';')[0]
-    const renewalSelection = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
-      headers: { Cookie: renewalCookie as string },
+    const recoveryResponse = await originalFetch(`http://127.0.0.1:${port}/mcp`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.BANK_CONSENT_MCP_TOKEN}`,
+        Accept: 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: {
+          name: 'recover_bank_selection',
+          arguments: { aspspName: 'Mock Bank', aspspCountry: 'SE' },
+        },
+      }),
     })
+    expect(recoveryResponse.status).toBe(200)
+    const recovery = (await recoveryResponse.json()) as {
+      result: { structuredContent: { url: string } }
+    }
+    const recoveryUrl = new URL(recovery.result.structuredContent.url)
+    expect(recoveryUrl.pathname).toBe('/banking/select')
+    expect(recoveryUrl.searchParams.get('proof')).toMatch(
+      /^[0-9a-f-]{36}\.\d{13}\.[A-Za-z0-9_-]{43}$/,
+    )
+    const renewalSelection = await originalFetch(recoveryUrl.toString())
+    expect(renewalSelection.status).toBe(200)
     const renewalPage = await renewalSelection.text()
     expect(renewalPage).toContain('checked')
     const renewalAccountId = /name="account" value="([0-9a-f-]+)"/.exec(renewalPage)?.[1]
@@ -284,7 +309,6 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
     const renewalSave = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
       method: 'POST',
       headers: {
-        Cookie: renewalCookie as string,
         Origin: 'null',
         'Content-Type': 'application/x-www-form-urlencoded',
       },

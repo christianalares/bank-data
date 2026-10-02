@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 00:59 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 01:04 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 05: consent service prepared, live verification blocked
 
@@ -104,6 +104,37 @@ and replay with a different code returns 400. The current Vivaldi flow began
 before those hashes were stored, so its recovery depends on the cookie in
 that same browser. Do not issue another bank authorization before checking
 that recovery path.
+
+The idempotent callback patch passed the full unit suite, the isolated
+Postgres 18 consent integration, typechecks, Biome, root build, Drizzle check,
+and MCP smoke test. The retained backup checksum matched again, and the
+Railway plan had no infrastructure changes. It was pushed as commit `ea28af4`
+with a tree identical to the tested local commit, and MCP deployment
+`62fa6266-1a4a-442f-bfe6-f4820036de26` reached `SUCCESS` at 01:01:06 UTC.
+The health endpoint returned 200. A read-only Enable Banking GET for the
+stored provider session succeeded and reported one account. The source chat
+asked the user to open `/banking/select` in the same Vivaldi browser before
+the selection cookie expires around 01:11 UTC. At 01:02 UTC, that same
+Vivaldi browser returned `Account selection expired`, so it did not send a
+valid selection cookie on this GET. The callback response code path did set
+the cookie on its successful 303, but Railway's HTTP logs do not expose
+response headers or cookie acceptance. The evidence cannot distinguish
+browser rejection from navigation timing or a later cookie loss. Do not infer
+that the session failed: the database and provider still show one completed
+pending consent and one account.
+
+A restricted `recover_bank_selection` MCP operation is being added for this
+case. It accepts a bank name and country, then checks that the latest personal
+pending consent is a recent completed renewal for that bank, that its prior
+connection remains active, and that an account was discovered. It returns a
+short-lived signed selection URL. The selection GET accepts that signed proof
+without a cookie and renders a form with the proof and an HMAC CSRF token.
+The POST already verifies both without a cookie; a foreign origin still fails.
+The page has no external resources and retains `Cache-Control: no-store`,
+`Referrer-Policy: no-referrer`, and its restrictive content security policy.
+Local integration verified a cookie-less recovery GET and POST. The recovery
+URL is a temporary bearer capability; do not paste it into logs or docs.
+Task 05 remains blocked until deployment and a live account selection save.
 
 The checkout was clean and
 matched `origin/codex/bank-mcp-migration` at `491b3ea` on resumption. The
