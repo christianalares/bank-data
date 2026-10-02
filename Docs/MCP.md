@@ -63,6 +63,8 @@ Use `bankName` and/or `workspaceKind` to filter one bank or personal/business wo
 same connection. Unfiltered transaction pages interleave banks by booking date; callers should
 group rows by bank and workspace or ask the user which source they mean. All-bank access includes personal
 transaction descriptions, so keep this token separate from existing business and personal tokens.
+Banks with multiple selected accounts, including personal and joint Revolut accounts, are distinguished
+by stable `accountId`; filter on that ID or group returned rows by `accountId` and `accountName`.
 Connection status and last sync time show whether provider data is fresh; stored history can still
 be read while a bank is disconnected.
 

@@ -473,7 +473,7 @@ function registerAllBankReadTools(server: McpServer) {
     {
       title: 'List all selected bank accounts',
       description:
-        'Discover selected personal and business accounts before choosing a bank or account. Each account includes bankName and workspaceKind; use these exact labels to scope transaction reads. Connection status and last sync time indicate freshness.',
+        'Discover selected personal and business accounts before choosing a bank or account. Each account includes bankName, workspaceKind, and a stable id. A bank can have multiple accounts, such as personal and joint Revolut accounts; use each id to distinguish them. Connection status and last sync time indicate freshness.',
       outputSchema: allBankAccountsSchema,
       annotations: readOnlyAnnotations,
     },
@@ -490,7 +490,7 @@ function registerAllBankReadTools(server: McpServer) {
     {
       title: 'List all booked bank transactions',
       description:
-        'Read booked transactions from selected accounts. Filter by bankName, workspaceKind (personal or business), accountId, or inclusive UTC dates. With no bank or workspace filter, results from every bank are interleaved newest first; keep them separated by bankName and workspaceKind in the answer. If the request is ambiguous, list accounts first and ask which bank or workspace the user means. Follow nextCursor while incompletePage is true. Stored history may be incomplete.',
+        'Read booked transactions from selected accounts. Filter by bankName, workspaceKind (personal or business), accountId, or inclusive UTC dates. A bankName filter includes every selected account at that bank; use accountId for one account, or group the answer by accountId and accountName. With no bank or workspace filter, every bank is interleaved newest first; keep banks and workspaces separate in the answer. If the requested bank or account is ambiguous, list accounts first and ask which one the user means. Follow nextCursor while incompletePage is true. Stored history may be incomplete.',
       inputSchema: listAllBankTransactionsInputSchema,
       outputSchema: allBankTransactionPageSchema,
       annotations: readOnlyAnnotations,
@@ -508,7 +508,7 @@ function registerAllBankReadTools(server: McpServer) {
     {
       title: 'Summarize all booked bank transactions',
       description:
-        'Return exact booked counts and credit, debit, and net totals grouped by bankName, workspaceKind, and original currency. Filter by bankName, workspaceKind (personal or business), accountId, or inclusive UTC dates. Use this to compare banks without mixing personal and business totals.',
+        'Return exact booked counts and credit, debit, and net totals grouped by bankName, workspaceKind, and original currency. Filter by bankName, workspaceKind (personal or business), accountId, or inclusive UTC dates. A bankName filter includes all its selected accounts; use accountId to total one personal or joint account. Use this to compare banks without mixing personal and business totals.',
       inputSchema: allBankReadInputSchema,
       outputSchema: allBankTotalsSchema,
       annotations: readOnlyAnnotations,

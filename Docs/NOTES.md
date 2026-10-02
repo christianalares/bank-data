@@ -1091,3 +1091,9 @@ all-bank transaction and totals tools now accept an explicit `workspaceKind`
 filter in addition to `bankName` and `accountId`. Their descriptions tell
 agents to discover available accounts first, and to avoid presenting an
 unfiltered, time-ordered page as one bank statement.
+
+The user also clarified that two Revolut accounts must remain distinct. Live
+Executor `accountId`-filtered totals returned 459 booked rows for the personal
+Revolut account and 138 for the shared Revolut account, summing to the 597
+Revolut total. The tool descriptions now say that `bankName=Revolut` includes
+both accounts and that an individual account needs its stable `accountId`.
