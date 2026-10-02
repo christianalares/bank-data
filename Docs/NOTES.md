@@ -1,45 +1,60 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 02:36 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 05:25 UTC. Branch: `codex/bank-mcp-migration`.
 
-## Task 08: Executor and Raycast acceptance in progress
+## Task 08: Executor and Raycast bank read acceptance
 
 The checkout began clean at `ffcef56`, matching
 `origin/codex/bank-mcp-migration`. `bd`, `br`, and `bv` are unavailable on this
-host, so the plan ledger records progress. No application source, bank row,
-Railway resource, database setting, or existing credential was changed.
+host, so the plan ledger records status. No application source, bank row,
+Railway resource, database setting, or existing bearer value was changed.
 
 Executor on the home Mac was reachable through its existing connected MCP
 route. Its live connection inventory had no Hidden Village bank entry. A probe
 of `https://hidden-village-mcp.up.railway.app/mcp` reported bearer
 authentication required and no OAuth requirement. The new Executor catalog
 integration `hidden_village_bank` uses streamable HTTP and an Authorization
-bearer template. Its user-owned `Hidden Village business bank` connection form
-is prepared on the home Mac, but no credential has been entered or connection
-created. The secure handoff URL is
-`http://localhost:4789/integrations/hidden_village_bank?addAccount=1&owner=user&label=Hidden%20Village%20business%20bank`.
-The user was asked through the coordinating chat to enter the existing
-production `MCP_API_TOKEN` from Railway's `mcp` service there, or explicitly
-authorize that precise transfer. Token values were not written to notes or
-sent in chat.
+bearer template. After the user explicitly approved transferring the existing
+production `MCP_API_TOKEN` from Railway's `mcp` service, the token was pasted
+through a secure Executor form without printing its value, then the local
+clipboard was cleared. That form initially created an org-owned connection
+despite `owner=user` in its handoff URL. A user-owned connection was created
+from the same provider credential reference, its authenticated read passed,
+and the temporary org connection was removed. Fresh inventory contains only
+`tools.hidden_village_bank.user.hiddenVillageBusinessBank`. The file provider
+still labels the retained credential item with its original org namespace;
+there is no org-owned connection. No token value is present in task notes or
+chat.
 
-Before connecting the broad business bearer, 11 user-owned Executor block
-policies were installed for the legacy overview, transaction search,
-attachment read, and attachment mutation tools under `hidden_village_bank.*`.
-The intended remaining tools are `list_bank_accounts`,
-`list_bank_transactions`, and `summarize_bank_transactions`. The policies are
-present in a fresh list, but their enforcement cannot be confirmed until a
-connection produces tools. The underlying business MCP token still reaches
-legacy tools outside Executor, so the Executor policies are a client guardrail,
-not a new server-side authorization boundary.
+The first 11 Executor block policies used a wildcard in the middle of the
+address and did not enforce. They were removed. The final 11 org guardrail
+policies match full addresses under
+`hidden_village_bank.user.hiddenVillageBusinessBank` and block the legacy
+overview, transaction search, attachment read, and attachment mutation tools.
+A real `get_finance_overview` call returned `tool_blocked` after the temporary
+org connection was removed. The three permitted tools are
+`list_bank_accounts`, `list_bank_transactions`, and
+`summarize_bank_transactions`. This is an Executor client policy. The business
+bearer still reaches legacy tools through the MCP server directly, so it is
+not a server-side bank-only token.
 
 A direct authenticated HTTP client on this Mac read all selected company
 transactions with limit 50: five pages of 50, 50, 50, 50, and 22 rows. All
 222 returned IDs were unique, the final page reported completion, and the
 sum of the bank totals counts was also 222. Four selected company accounts
-were returned. This verifies the live service's cursor traversal, not the
-Executor connection or its policy enforcement. No transaction content,
-account IDs, balances, token values, or cursor values were printed.
+were returned. The authenticated Executor connection independently repeated
+the complete cursor traversal: the same five page sizes and 222 unique IDs,
+with all rows booked and all account IDs in its four selected accounts. Its
+per-currency row counts matched `summarize_bank_transactions`, the final page
+reported completion, and no cursor repeated. The account read reported two
+connections in `error` and two `disconnected`. These are data freshness
+signals for Task 09, not a failure of stored-history reads. No transaction
+content, account IDs, balances, token values, or cursor values were printed.
+
+Railway's MCP deploy logs from 05:18 UTC onward contained 11 structured
+`bank_mcp_read` events: five account reads, one totals read, and five page
+reads. Logged filter fields were limited to `hasAccountFilter`, `hasCursor`,
+and `limit`; no raw account ID or cursor value was present.
 
 Raycast on this Mac already has `Personal Finance`, `Executor`, and an older
 direct `Hidden Village` MCP entry. Starting `Personal Finance` refreshed its
@@ -50,24 +65,25 @@ returned two rows, `incompletePage=true`, and a continuation cursor. The
 chat was instructed to report counts only, though an earlier automatically
 generated response also displayed balances in the local Raycast UI. Do not
 repeat those values in task output. The `Executor` Raycast entry starts and
-shows its seven current tools. An actual Raycast `@executor` call to
-`connections.list` reported zero saved `hidden_village_bank` connections,
-confirming that route works without claiming bank-tool acceptance. The bank
-path through it remains untested until the new Executor connection is saved.
+shows its seven current tools. Before connection, Raycast `@executor` called
+`connections.list` and correctly found zero bank connections. After
+connection, Raycast `@executor` called the user-owned `list_bank_accounts`
+tool. Its first AI-generated parser read `result.data.accounts` and falsely
+reported zero, although the tool call succeeded. A corrected call required
+`result.data.structuredContent.accounts` and returned four accounts, with two
+in `error` and two `disconnected`. The corrected structured-content result is
+the Raycast bank acceptance evidence; do not use the first summary.
 
 The older direct `Hidden Village` Raycast entry is configured for the same
 production MCP URL with no HTTP header in its editor. Starting it failed with
 `Dynamic Client Registration rejected (HTTP 404)`, consistent with Raycast
 attempting OAuth against the bearer-only MCP service. Its displayed tool list
 is stale and lacks the Task 07 bank reads. No Raycast server configuration was
-changed. Keep that entry until the Executor bank route has passed an actual
-call, then decide whether to retire it rather than add another broad bearer
-credential to Raycast. The working personal entry should also remain in place.
-
-Task 08 still needs a real user-owned Executor connection, a denied legacy
-tool call showing policy enforcement, authenticated bank reads from Executor,
-complete cursor traversal there, and a Raycast `@executor` bank call on the
-intended device. The iPhone Raycast path has not been observed.
+changed because the existing `Executor` and `Personal Finance` entries passed
+the intended calls. Retire the stale direct entry during Task 10 cleanup
+rather than add another broad bearer credential to Raycast. The intended Task
+08 paths were Executor on the home Mac and Raycast on this Mac. Raycast on the
+iPhone was not tested and was not required for this acceptance.
 
 ## Task 07: selected account read tools and stable renewal identity
 
