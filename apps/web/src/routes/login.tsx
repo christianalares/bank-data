@@ -60,7 +60,7 @@ function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center bg-background px-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Log in to Hidden Village</CardTitle>
+          <CardTitle>Log in to Bank Data</CardTitle>
           <CardDescription>
             Email/password auth is local to this private app. Gmail connects later as inbox data.
           </CardDescription>

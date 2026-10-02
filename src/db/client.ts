@@ -5,8 +5,8 @@ import * as schema from './schema'
 
 // Use a global symbol so the singleton survives across module re-evaluations
 // (e.g. during hot reloads in development).
-const GLOBAL_DB_KEY = Symbol.for('hidden-village:db')
-const GLOBAL_DB_CLIENT_KEY = Symbol.for('hidden-village:db-client')
+const GLOBAL_DB_KEY = Symbol.for('bank-data:db')
+const GLOBAL_DB_CLIENT_KEY = Symbol.for('bank-data:db-client')
 
 const globalObj = globalThis as typeof globalThis & {
   [GLOBAL_DB_KEY]?: ReturnType<typeof drizzle<typeof schema>>

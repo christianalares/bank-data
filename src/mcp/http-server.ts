@@ -63,7 +63,7 @@ export async function startHttpServer() {
     })
   })
 
-  console.error(`Hidden Village MCP listening on port ${port}`)
+  console.error(`Bank Data MCP listening on port ${port}`)
 
   return {
     close: async () => {
@@ -140,7 +140,7 @@ async function handleRequest({
 
   const authContext = await resolveMcpAuth(request.headers.authorization, apiToken, allBanksToken)
   if (!authContext) {
-    response.setHeader('WWW-Authenticate', 'Bearer realm="hidden-village-finance"')
+    response.setHeader('WWW-Authenticate', 'Bearer realm="bank-data-finance"')
     response.setHeader('Cache-Control', 'no-store')
     sendJson(response, 401, { error: 'Unauthorized' })
     return

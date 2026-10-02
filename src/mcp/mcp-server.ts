@@ -96,13 +96,13 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
   }
 
   if (context.mode === 'all-banks') {
-    const server = new McpServer({ name: 'hidden-village-all-banks', version: '0.1.0' })
+    const server = new McpServer({ name: 'bank-data-all-banks', version: '0.1.0' })
     registerAllBankReadTools(server)
     return server
   }
 
   const server = new McpServer({
-    name: 'hidden-village-finance',
+    name: 'bank-data-finance',
     version: '0.2.0',
   })
   const finance = new FinanceService()
@@ -277,7 +277,7 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
 }
 
 function createBankConsentMcpServer() {
-  const server = new McpServer({ name: 'hidden-village-bank-consent', version: '0.1.0' })
+  const server = new McpServer({ name: 'bank-data-bank-consent', version: '0.1.0' })
 
   server.registerTool(
     'start_bank_consent',
@@ -374,7 +374,7 @@ function createBankConsentMcpServer() {
 
 function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mode: 'personal' }>) {
   const server = new McpServer({
-    name: 'hidden-village-personal-finance',
+    name: 'bank-data-personal-finance',
     version: '0.3.0',
   })
   const finance = new PersonalFinanceService({ workspaceId: context.workspaceId })

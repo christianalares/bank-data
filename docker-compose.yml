@@ -4,6 +4,7 @@ services:
     ports:
       - '5433:5432'
     environment:
+      # Existing local volumes were initialized with these database credentials.
       POSTGRES_USER: hidden_village
       POSTGRES_PASSWORD: hidden_village
       POSTGRES_DB: hidden_village

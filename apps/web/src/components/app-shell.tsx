@@ -54,5 +54,5 @@ function getPageTitle(pathname: string) {
 
   const prefix = Object.keys(pageTitles).find((key) => key !== '/' && pathname.startsWith(key))
 
-  return prefix ? pageTitles[prefix] : 'Hidden Village'
+  return prefix ? pageTitles[prefix] : 'Bank Data'
 }

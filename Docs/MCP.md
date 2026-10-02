@@ -1,4 +1,4 @@
-# Hidden Village finance MCP
+# Bank Data MCP
 
 MCP server for searching transactions, viewing invoice attachments through short-lived signed
 links, and managing transaction matches without exposing raw document bytes.
@@ -93,9 +93,9 @@ Example MCP client configuration after building:
 ```json
 {
   "mcpServers": {
-    "hidden-village-finance": {
+    "bank-data-finance": {
       "command": "pnpm",
-      "args": ["--dir", "/absolute/path/to/hidden-village", "start:mcp:local"]
+      "args": ["--dir", "/absolute/path/to/bank-data", "start:mcp:local"]
     }
   }
 }

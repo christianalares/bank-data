@@ -24,7 +24,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Hidden Village',
+        title: 'Bank Data',
       },
     ],
     links: [

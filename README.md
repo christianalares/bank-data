@@ -1,6 +1,8 @@
-# Hidden Village
+# Bank Data
 
-Hidden Village bank data service and legacy web routes during the migration.
+Private bank data service for personal, shared, and Hidden Village business accounts.
+It syncs booked transactions and exposes read-only MCP tools; the legacy web routes
+remain during migration.
 
 ## Stack
 
@@ -10,6 +12,16 @@ Hidden Village bank data service and legacy web routes during the migration.
 - Drizzle migrations in `drizzle`, with the original SQL and journal preserved
 - Legacy TanStack Start routes in `apps/web/src` and Trigger tasks in `src/jobs`
 - Biome for formatting and linting
+
+## Naming transition
+
+`Bank Data` names the project and MCP server. `Hidden Village` still names the
+business workspace and the existing Enable Banking application. The legacy web
+service, external search worker, stored personal token prefix, local Postgres
+credentials, and public Railway domains retain their current identifiers while
+their consumers are migrated or the resources are retired. The old MCP domain
+must remain reachable until Executor, other clients, and the bank consent
+redirect configuration use its replacement.
 
 ## Local Development
 

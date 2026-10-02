@@ -30,10 +30,7 @@ try {
     body: '{}',
   })
   assert.equal(unauthorized.status, 401)
-  assert.equal(
-    unauthorized.headers.get('www-authenticate'),
-    'Bearer realm="hidden-village-finance"',
-  )
+  assert.equal(unauthorized.headers.get('www-authenticate'), 'Bearer realm="bank-data-finance"')
 
   const syncHelp = await runSyncHelp()
   assert.match(syncHelp, /Usage: pnpm start:sync/)

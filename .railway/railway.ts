@@ -11,14 +11,14 @@ import {
 
 export default defineRailway((context) => {
   if (context.projectId !== 'c6c36c86-d6c0-4c07-b181-d903db2e3b7b') {
-    throw new Error('This configuration targets the existing hidden-village project only.')
+    throw new Error('This configuration targets the existing bank-data project only.')
   }
   if (context.environmentId !== 'b9e7fc05-5205-4f40-be2d-f6e160aa2d18') {
     throw new Error('This configuration targets the existing production environment only.')
   }
 
-  const hiddenVillage = github('christianalares/hidden-village', { checkSuites: false })
-  const migrationBranch = github('christianalares/hidden-village', {
+  const bankData = github('christianalares/bank-data', { checkSuites: false })
+  const migrationBranch = github('christianalares/bank-data', {
     branch: 'codex/bank-mcp-migration',
     checkSuites: false,
   })
@@ -60,6 +60,7 @@ export default defineRailway((context) => {
       ENABLE_BANKING_APPLICATION_ID: preserve(),
       ENABLE_BANKING_PRIVATE_KEY_BASE64: preserve(),
       MCP_ALLOWED_HOSTS: preserve(),
+      MCP_ALL_BANKS_TOKEN: preserve(),
       MCP_API_TOKEN: preserve(),
       MCP_TRANSPORT: preserve(),
       PERSONAL_DATA_ENCRYPTION_KEY: preserve(),
@@ -85,7 +86,8 @@ export default defineRailway((context) => {
   })
   // Existing service c0f5fbc3-2e22-4401-ade8-68671c3a5496.
   const web = service('web', {
-    source: hiddenVillage,
+    source: bankData,
+    // The web service still builds the legacy main-branch package until its retirement.
     build: 'pnpm --filter @hidden-village/web build',
     start: 'pnpm --filter @hidden-village/web start',
     preDeploy: 'pnpm db:migrate:prod',
@@ -116,7 +118,7 @@ export default defineRailway((context) => {
     },
   })
 
-  return project('hidden-village', {
+  return project('bank-data', {
     resources: [Postgres, mcp, bankSync, web, postgresVolumeR7JC, bucketResource],
   })
 })

@@ -1,15 +1,15 @@
-# Hidden Village bank MCP migration
+# Bank Data MCP migration
 
 Status: planning. Working branch: `codex/bank-mcp-migration`.
 
 ## Goal
 
-Keep a small, reliable, read-only bank data service. Hidden Village retains its
+Keep a small, reliable, read-only bank data service. Bank Data retains its
 Postgres transaction history, Drizzle schema and migrations, Enable Banking
 connection, scheduled import, and MCP access. ChatGPT through Executor handles
 reasoning, invoice discovery, and instructions for where to search. Executor runs
 on the user's other machine and can use its own email, browser, computer, and
-file connections. Hidden Village does not need to import invoices or make
+file connections. Bank Data does not need to import invoices or make
 matching decisions.
 
 The intended Railway resources are the existing Postgres database, an HTTP MCP
@@ -78,7 +78,7 @@ can inspect.
 
 - Payment initiation or transfers.
 - Invoice extraction, automatic invoice matching, Gmail ingestion, and custom
-  AI prompts in Hidden Village. Executor and ChatGPT own those workflows.
+  AI prompts in Bank Data. Executor and ChatGPT own those workflows.
 - Rebuilding the database from provider history. Enable Banking history can be
   limited after authorization, so the existing database is the archive.
 
