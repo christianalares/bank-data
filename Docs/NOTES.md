@@ -1,6 +1,32 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 10:02 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 10:14 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 09: user-requested manual sync retry
+
+At 10:13 UTC on October 2, more than eight hours after the prior SEB 429,
+the user requested another sync attempt. A single `node dist/sync.js` process
+ran inside the live Railway MCP container through SSH, using its production
+variables and private database connection. The `bank-sync` cron configuration
+was not changed, and no concurrent cron execution was observed. This was a
+manual run, not proof of unattended cron execution.
+
+Nordea and Revolut completed successfully. Their MCP `lastSyncedAt` values
+advanced to 10:13:31 and 10:13:35 UTC. The SEB connection returned HTTP 429
+`ASPSP_RATE_LIMIT_EXCEEDED` again, so the overall command exited with code 1.
+A read-only database check confirmed one connection in `error`, with its last
+successful sync still at 01:01:29 UTC, the new error recorded at 10:13:31 UTC,
+and consent valid through 2026-11-22. The two selected SEB accounts on this
+connection therefore still show `error`; two other selected SEB accounts are
+on an older disconnected connection. The fresh all-bank MCP totals still count
+1,957 Nordea, 597 Revolut, and 222 SEB stored booked rows. Those aggregate
+counts were unchanged; provider completeness remains unverified while SEB is
+rate-limited.
+
+Do not retry immediately. The six-hour background-fetch guard now uses the
+new error time, and the next daily Railway cron remains scheduled for
+2026-10-03 02:00 UTC. Task 09 remains in progress until that run and the
+unattended client read are observed.
 
 ## Task 13: retire the old Executor bank integration
 
