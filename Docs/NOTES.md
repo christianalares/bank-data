@@ -5,9 +5,9 @@ Updated: 2026-10-02 05:32 UTC. Branch: `codex/bank-mcp-migration`.
 ## Task 09: bounded bank comparison and unattended gates
 
 The checkout began clean at `bcefc73` and matched the freshly fetched remote
-branch. `bd`, `br`, and `bv` are unavailable on this host, so the plan ledger
-records Task 09 as in progress. Fresh Railway status still lists the existing
-Postgres service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60`, MCP, web, and
+branch. The plan ledger records Task 09 as in progress. Fresh Railway status
+still lists the existing Postgres service
+`404f6fb9-da37-403f-b1f3-e8d6e2c54d60`, MCP, web, and
 `bank-sync`. Postgres remained on its existing successful deployment. The
 latest MCP and bank-sync deployments reported `SUCCESS` from `bcefc73`.
 The bank-sync configuration remains `0 2 * * *` in UTC with restart policy
@@ -85,9 +85,9 @@ retry that provider connection merely to satisfy the check.
 ## Task 08: Executor and Raycast bank read acceptance
 
 The checkout began clean at `ffcef56`, matching
-`origin/codex/bank-mcp-migration`. `bd`, `br`, and `bv` are unavailable on this
-host, so the plan ledger records status. No application source, bank row,
-Railway resource, database setting, or existing bearer value was changed.
+`origin/codex/bank-mcp-migration`. The plan ledger records status. No
+application source, bank row, Railway resource, database setting, or existing
+bearer value was changed.
 
 Executor on the home Mac was reachable through its existing connected MCP
 route. Its live connection inventory had no Hidden Village bank entry. A probe
@@ -167,10 +167,10 @@ iPhone was not tested and was not required for this acceptance.
 
 ## Task 07: selected account read tools and stable renewal identity
 
-The checkout began clean at `f52c38f`, matching the remote branch. `bd`,
-`br`, and `bv` remain unavailable on this host; the plan ledger carries the
-task status. No database schema, migration, provider request, account row,
-Railway resource, or consent setting was changed for this task.
+The checkout began clean at `f52c38f`, matching the remote branch. The plan
+ledger carries the task status. No database schema, migration, provider
+request, account row, Railway resource, or consent setting was changed for
+this task.
 
 The business bearer token now offers three read-only bank tools alongside
 the existing business tools. A personal workspace token offers the same
@@ -279,9 +279,9 @@ personal path from the intended device.
 
 The checkout began clean at `f6ad675`, matched
 `origin/codex/bank-mcp-migration`, and had full filesystem and network access
-without approval prompts. `bd`, `br`, and `bv` are unavailable on this host,
-so this ledger carries Task 06 status. Fresh Railway status still showed the
-protected Postgres service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60` and the
+without approval prompts. This ledger carries Task 06 status. Fresh Railway
+status still showed the protected Postgres service
+`404f6fb9-da37-403f-b1f3-e8d6e2c54d60` and the
 existing MCP, web, volume, and bucket. A fresh plan before edits reported no
 changes. After adding `bank-sync`, the production plan reported exactly one
 safe resource creation, zero diagnostics, and no changes to the five existing
@@ -562,8 +562,7 @@ value below. The then-latest MCP deployment
 The clean branch matched `origin/codex/bank-mcp-migration` at `0e682ce`
 after a fresh fetch. Tasks 01 through 04 were checked against this plan and
 the checkout before editing. Filesystem and network access were effective,
-with approval policy `never`. `bd prime` was unavailable because `bd` is not
-installed, so the Docs ledger records this task.
+with approval policy `never`. The Docs ledger records this task.
 
 The MCP HTTP service now accepts a dedicated `BANK_CONSENT_MCP_TOKEN` that must
 be distinct from `MCP_API_TOKEN`. That context exposes only
@@ -691,8 +690,7 @@ Tasks 01 through 03 were marked done in `PLAN.md` before this task. The
 checkout was clean at `ed19201`, and a fresh fetch confirmed that the local
 branch matched `origin/codex/bank-mcp-migration`. The effective context allowed
 filesystem and network access with approval policy `never`; no approval or
-automatic approval was requested. `bd prime` again failed because `bd` is not
-installed, so this plan and notes remain the task ledger.
+automatic approval was requested. This plan and notes remain the task ledger.
 
 There is now one application `package.json` at the repository root. The MCP,
 provider, database, finance, storage, auth, jobs, and utility source moved
@@ -808,8 +806,7 @@ before any apply.
 No config apply, infrastructure change, deployment, migration, data change,
 provider setting change, or Raycast change was made. There is still no
 verified usable backup or tested restore, so **do not apply a
-production-changing plan** until that gate is resolved. `bd prime` remains
-unavailable because `bd` is not installed; no beads state was changed.
+production-changing plan** until that gate is resolved.
 
 ## Task 02: read-only database and repository comparison
 
@@ -901,8 +898,7 @@ reauthorized. Those require provider-side and user-context checks in later
 tasks. Task 01's lack of a verified usable restore point remains a blocker for
 schema changes, new sync deployment, and removal of any service or data.
 
-`bd prime` remains unavailable because `bd` is not installed on this host.
-No beads state was changed; the established Docs ledger records Task 02.
+The established Docs ledger records Task 02.
 
 ## Task 01: live inventory
 
@@ -981,8 +977,7 @@ schedule, and the only listed backup past its expiry timestamp, there is no
 verified usable restore point or tested restore procedure. Establish and test
 one before any schema change, new sync deployment, or service removal.
 
-`bd prime` could not run because `bd` is unavailable on this host. No beads
-issue or state was changed; this plan and note carry the task status.
+This plan and note carry the task status.
 
 ## Verified so far
 
@@ -996,9 +991,8 @@ issue or state was changed; this plan and note carry the task status.
 - `railway status` without an explicit project failed because this checkout is
   not linked to a Railway project. Use explicit project/environment selection
   for read-only inspection. Task 01 completed a fresh detailed status read.
-- `bd prime` could not run because `bd` is not installed on this host. The user
-  expressly requested the working plan and task ledger in `Docs/` so future
-  agents can pick up one slice at a time.
+- The working plan and task ledger in `Docs/` let future agents pick up one
+  slice at a time.
 - The repository already uses Drizzle and has migrations `0000` through `0014`.
   Their continuity must be verified against the live database before changes.
 - The provider client asks Enable Banking for `transaction_status=BOOK` and

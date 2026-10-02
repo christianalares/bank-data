@@ -83,8 +83,8 @@ export function ModulePage({ title, description, status, stats = [], children }:
               <EmptyHeader>
                 <EmptyTitle>Implementation pending</EmptyTitle>
                 <EmptyDescription>
-                  The route, navigation, and module boundary exist. The next Beads slice fills in
-                  the real workflow.
+                  The route, navigation, and module boundary exist. The real workflow is still
+                  pending.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>

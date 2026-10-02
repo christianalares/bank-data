@@ -16,14 +16,5 @@ dist/
 # Logs
 *.log
 
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
-.beads/issues.jsonl
-
-# bv (beads viewer) local config and caches
-.bv/
-
 # Trigger.dev local build cache
 packages/jobs/.trigger/

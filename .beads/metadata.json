@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "hidden_village",
-  "project_id": "5896cbb2-39a8-4349-a1dc-64eed4318782"
-}
