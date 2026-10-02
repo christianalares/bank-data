@@ -4,7 +4,9 @@ import {
   completeBankConsent,
   getBankSelection,
   getConsentRedirectUrl,
+  hasValidSelectionFormToken,
   makeSelectionCookie,
+  makeSelectionFormToken,
   readSelectionCookie,
 } from '../banking/consent-service'
 
@@ -36,7 +38,7 @@ export async function handleBankConsentHttp(
       if (result.needsSelection) {
         response.setHeader(
           'Set-Cookie',
-          `${COOKIE_NAME}=${makeSelectionCookie(result.connectionId)}; HttpOnly; Secure; SameSite=Lax; Path=/banking; Max-Age=900`,
+          `${COOKIE_NAME}=${makeSelectionCookie(result.connectionId)}; HttpOnly; Secure; SameSite=None; Path=/banking; Max-Age=900`,
         )
         response.setHeader('Location', '/banking/select')
         response.statusCode = 303
@@ -59,13 +61,18 @@ export async function handleBankConsentHttp(
   }
 
   if (url.pathname === '/banking/select' && request.method === 'GET') {
-    const connectionId = readSelectionCookie(getCookie(request, COOKIE_NAME))
+    const selectionCookie = getCookie(request, COOKIE_NAME)
+    const connectionId = readSelectionCookie(selectionCookie)
     if (!connectionId) {
       sendHtml(response, 403, '<h1>Account selection expired</h1>')
       return
     }
     try {
       const accounts = await getBankSelection(connectionId)
+      response.setHeader(
+        'Set-Cookie',
+        `${COOKIE_NAME}=${selectionCookie}; HttpOnly; Secure; SameSite=None; Path=/banking; Max-Age=900`,
+      )
       const rows = accounts
         .map(
           (account) =>
@@ -75,7 +82,7 @@ export async function handleBankConsentHttp(
       sendHtml(
         response,
         200,
-        `<h1>Select accounts to sync</h1><form method="post" action="/banking/select">${rows}<button type="submit">Save selection</button></form>`,
+        `<h1>Select accounts to sync</h1><form method="post" action="/banking/select"><input type="hidden" name="csrf" value="${makeSelectionFormToken(selectionCookie as string)}">${rows}<button type="submit">Save selection</button></form>`,
       )
     } catch {
       sendHtml(response, 403, '<h1>Account selection is no longer available</h1>')
@@ -84,11 +91,12 @@ export async function handleBankConsentHttp(
   }
 
   if (url.pathname === '/banking/select' && request.method === 'POST') {
-    const connectionId = readSelectionCookie(getCookie(request, COOKIE_NAME))
+    const selectionCookie = getCookie(request, COOKIE_NAME)
+    const connectionId = readSelectionCookie(selectionCookie)
     const expectedOrigin = new URL(getConsentRedirectUrl()).origin
     if (
       !connectionId ||
-      request.headers.origin !== expectedOrigin ||
+      (request.headers.origin !== undefined && request.headers.origin !== expectedOrigin) ||
       !request.headers['content-type']?.startsWith('application/x-www-form-urlencoded')
     ) {
       sendHtml(response, 403, '<h1>Account selection is not authorized</h1>')
@@ -96,11 +104,16 @@ export async function handleBankConsentHttp(
     }
     try {
       const body = await readSmallBody(request)
-      const selectedIds = new URLSearchParams(body).getAll('account')
+      const form = new URLSearchParams(body)
+      if (!hasValidSelectionFormToken(selectionCookie as string, form.get('csrf'))) {
+        sendHtml(response, 403, '<h1>Account selection is not authorized</h1>')
+        return
+      }
+      const selectedIds = form.getAll('account')
       await activateBankConsent(connectionId, selectedIds)
       response.setHeader(
         'Set-Cookie',
-        `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/banking; Max-Age=0`,
+        `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Path=/banking; Max-Age=0`,
       )
       sendHtml(response, 200, '<h1>Bank connected</h1><p>Your account selection was saved.</p>')
     } catch {
