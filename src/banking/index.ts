@@ -186,6 +186,8 @@ export async function getEnableBankingTransactions(
 ) {
   const transactions: EnableBankingTransaction[] = []
   let continuationKey: string | undefined
+  const seenContinuationKeys = new Set<string>()
+  let pages = 0
 
   do {
     const params = new URLSearchParams({
@@ -203,8 +205,21 @@ export async function getEnableBankingTransactions(
       continuation_key?: string
     }>(`/accounts/${encodeURIComponent(accountId)}/transactions?${params.toString()}`)
 
-    transactions.push(...(response.transactions ?? []))
+    if (!Array.isArray(response.transactions)) {
+      throw new Error('Enable Banking returned a transaction page without transactions')
+    }
+    pages += 1
+    if (pages > 1_000) {
+      throw new Error('Enable Banking transaction pagination exceeded 1,000 pages')
+    }
+    transactions.push(...response.transactions)
     continuationKey = response.continuation_key
+    if (continuationKey) {
+      if (seenContinuationKeys.has(continuationKey)) {
+        throw new Error('Enable Banking repeated a transaction continuation key')
+      }
+      seenContinuationKeys.add(continuationKey)
+    }
   } while (continuationKey)
 
   return transactions.filter((transaction) => transaction.status !== 'PDNG')
@@ -408,12 +423,12 @@ function parseDate(value: string) {
   const compactDate = /^(\d{8})$/.exec(normalizedValue)
 
   if (swedishDate) {
-    return new Date(`${swedishDate[1]}-${swedishDate[2]}-${swedishDate[3]}T00:00:00`)
+    return new Date(`${swedishDate[1]}-${swedishDate[2]}-${swedishDate[3]}T00:00:00Z`)
   }
 
   if (compactDate) {
     return new Date(
-      `${compactDate[1].slice(0, 4)}-${compactDate[1].slice(4, 6)}-${compactDate[1].slice(6, 8)}T00:00:00`,
+      `${compactDate[1].slice(0, 4)}-${compactDate[1].slice(4, 6)}-${compactDate[1].slice(6, 8)}T00:00:00Z`,
     )
   }
 

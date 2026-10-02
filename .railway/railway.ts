@@ -67,6 +67,23 @@ export default defineRailway((context) => {
       PERSONAL_SEARCH_SERVICE_URL: preserve(),
     },
   })
+  const bankSync = service('bank-sync', {
+    source: migrationBranch,
+    build: 'pnpm build:server',
+    start: 'pnpm start:sync',
+    deploy: {
+      cronSchedule: '0 2 * * *',
+      restartPolicyType: 'ON_FAILURE',
+      restartPolicyMaxRetries: 2,
+    },
+    replicas: { 'europe-west4-drams3a': 1 },
+    env: {
+      DATABASE_URL: Postgres.env.DATABASE_URL,
+      ENABLE_BANKING_APPLICATION_ID: mcp.env.ENABLE_BANKING_APPLICATION_ID,
+      ENABLE_BANKING_PRIVATE_KEY_BASE64: mcp.env.ENABLE_BANKING_PRIVATE_KEY_BASE64,
+      PERSONAL_DATA_ENCRYPTION_KEY: mcp.env.PERSONAL_DATA_ENCRYPTION_KEY,
+    },
+  })
   // Existing service [private resource identifier].
   const web = service('web', {
     source: bankData,
@@ -101,7 +118,7 @@ export default defineRailway((context) => {
   })
 
   return project('bank-data', {
-    resources: [Postgres, mcp, web, postgresVolume, bucketResource],
+    resources: [Postgres, mcp, bankSync, web, postgresVolume, bucketResource],
   })
 })
 

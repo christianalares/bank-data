@@ -2,7 +2,11 @@ import { generateKeyPairSync } from 'node:crypto'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { enableBankingRequest, getEnableBankingTransactions } from './index'
+import {
+  enableBankingRequest,
+  getEnableBankingTransactions,
+  normalizeEnableBankingTransaction,
+} from './index'
 
 describe('getEnableBankingTransactions', () => {
   beforeEach(() => {
@@ -82,6 +86,34 @@ describe('getEnableBankingTransactions', () => {
     expect(url.searchParams.get('strategy')).toBe('default')
   })
 
+  it('fails an incomplete pagination loop without importing a partial result', async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            transactions: [{ transaction_id: 'first', status: 'BOOK' }],
+            continuation_key: 'same-page',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      getEnableBankingTransactions('account-1', { dateFrom: '2026-07-13' }),
+    ).rejects.toThrow('repeated a transaction continuation key')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a page with no transactions field', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+
+    await expect(
+      getEnableBankingTransactions('account-1', { dateFrom: '2026-07-13' }),
+    ).rejects.toThrow('page without transactions')
+  })
+
   it('excludes pending transactions returned by the provider on every page', async () => {
     const fetchMock = vi
       .fn()
@@ -136,5 +168,22 @@ describe('getEnableBankingTransactions', () => {
 
     const requestOptions = fetchMock.mock.calls[0]?.[1] as RequestInit
     expect(requestOptions.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+describe('normalizeEnableBankingTransaction', () => {
+  it('normalizes bank dates at UTC midnight regardless of the process timezone', () => {
+    for (const bookingDate of ['2026-09-28', '20260928']) {
+      const result = normalizeEnableBankingTransaction(
+        {
+          transaction_id: 'reference',
+          booking_date: bookingDate,
+          transaction_amount: { amount: '42.00', currency: 'SEK' },
+          credit_debit_indicator: 'DBIT',
+        },
+        { accountId: 'account', fallbackCurrency: 'SEK' },
+      )
+      expect(result.bookedAt.toISOString()).toBe('2026-09-28T00:00:00.000Z')
+    }
   })
 })
