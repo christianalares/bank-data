@@ -29,6 +29,8 @@ import {
 const TRANSACTION_IMPORT_CONCURRENCY = 6
 const PENDING_LIFETIME_MS = 30 * 60 * 1000
 const PROVIDER_ATTEMPTS = 3
+const BACKGROUND_FETCH_INTERVAL_MS = 6 * 60 * 60 * 1000
+const ASPSP_RATE_LIMIT_ERROR = 'ASPSP_RATE_LIMIT_EXCEEDED'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -86,14 +88,28 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
     console.info('No syncable Enable Banking connections found; nothing to sync.')
   }
 
+  let syncedConnections = 0
   let syncedAccounts = 0
   let syncedTransactions = 0
   let skippedHistorical = 0
   let bookingDateDrifts = 0
   let lastSuccessAt: string | null = null
+  let deferredConnections = 0
   const transientFailures: { connectionId: string; message: string }[] = []
 
   for (const connection of connections) {
+    if (!payload.accountId && shouldDeferBackgroundSync(connection, startedAt)) {
+      deferredConnections += 1
+      console.info('Deferred recent background bank fetch', { connectionId: connection.id })
+      if (connection.status === 'error') {
+        transientFailures.push({
+          connectionId: connection.id,
+          message: 'ASPSP background-fetch limit remains active',
+        })
+      }
+      continue
+    }
+
     try {
       if (connection.consentValidUntil && connection.consentValidUntil <= startedAt) {
         throw new Error('Bank consent expired')
@@ -105,6 +121,7 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
         targetAccountId: payload.accountId,
         historyDays: payload.historyDays,
       })
+      syncedConnections += 1
       syncedAccounts += result.syncedAccounts
       syncedTransactions += result.syncedTransactions
       skippedHistorical += result.skippedHistorical
@@ -144,7 +161,8 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
   }
 
   return {
-    syncedConnections: connections.length,
+    syncedConnections,
+    deferredConnections,
     syncedAccounts,
     syncedTransactions,
     skippedHistorical,
@@ -592,13 +610,38 @@ function isConsentFailure(message: string) {
   )
 }
 
-async function retryProvider<T>(operation: () => Promise<T>): Promise<T> {
+export function shouldDeferBackgroundSync(
+  connection: Pick<
+    typeof bankConnection.$inferSelect,
+    'status' | 'errorMessage' | 'lastSyncedAt' | 'updatedAt'
+  >,
+  now: Date,
+) {
+  const lastFetchAt =
+    connection.status === 'connected'
+      ? connection.lastSyncedAt
+      : connection.status === 'error' && connection.errorMessage?.includes(ASPSP_RATE_LIMIT_ERROR)
+        ? connection.updatedAt
+        : null
+
+  return Boolean(
+    lastFetchAt && now.getTime() - lastFetchAt.getTime() < BACKGROUND_FETCH_INTERVAL_MS,
+  )
+}
+
+export async function retryProvider<T>(operation: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await operation()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (isConsentFailure(message) || attempt >= PROVIDER_ATTEMPTS) {
+      // The bank's background-fetch cap will not clear during an immediate
+      // retry. Enable Banking recommends waiting six hours for this error.
+      if (
+        isConsentFailure(message) ||
+        message.includes(ASPSP_RATE_LIMIT_ERROR) ||
+        attempt >= PROVIDER_ATTEMPTS
+      ) {
         throw error
       }
       const delayMs = message.includes('(429)')
