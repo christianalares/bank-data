@@ -5,6 +5,7 @@ import { createDb, personalMcpToken } from '#db'
 import { getConsentToken } from '../banking/consent-service'
 
 import {
+  getAllBanksToken,
   getBearerToken,
   getRequiredApiToken,
   hashPersonalMcpToken,
@@ -20,6 +21,7 @@ export async function startHttpServer() {
 
   const port = getPort()
   const apiToken = getRequiredApiToken()
+  const allBanksToken = getAllBanksToken(apiToken)
   const allowedHosts = getAllowedHosts(port)
   const allowedOrigins = getAllowedOrigins(port)
   const concurrencyLimiter = new ConcurrencyLimiter(getMaxConcurrentRequests())
@@ -30,6 +32,7 @@ export async function startHttpServer() {
         request,
         response,
         apiToken,
+        allBanksToken,
         allowedHosts,
         allowedOrigins,
         concurrencyLimiter,
@@ -91,6 +94,7 @@ async function handleRequest({
   request,
   response,
   apiToken,
+  allBanksToken,
   allowedHosts,
   allowedOrigins,
   concurrencyLimiter,
@@ -98,6 +102,7 @@ async function handleRequest({
   request: IncomingMessage
   response: ServerResponse
   apiToken: string
+  allBanksToken: string | null
   allowedHosts: Set<string>
   allowedOrigins: Set<string>
   concurrencyLimiter: ConcurrencyLimiter
@@ -133,7 +138,7 @@ async function handleRequest({
     return
   }
 
-  const authContext = await resolveMcpAuth(request.headers.authorization, apiToken)
+  const authContext = await resolveMcpAuth(request.headers.authorization, apiToken, allBanksToken)
   if (!authContext) {
     response.setHeader('WWW-Authenticate', 'Bearer realm="hidden-village-finance"')
     response.setHeader('Cache-Control', 'no-store')
@@ -201,10 +206,15 @@ async function processMcpRequest(
 async function resolveMcpAuth(
   authorization: string | string[] | undefined,
   businessToken: string,
+  allBanksToken: string | null,
 ): Promise<FinanceMcpContext | null> {
   const consentToken = process.env.BANK_CONSENT_MCP_TOKEN?.trim()
   if (consentToken && hasValidBearerToken(authorization, getConsentToken())) {
     return { mode: 'consent' }
+  }
+
+  if (allBanksToken && hasValidBearerToken(authorization, allBanksToken)) {
+    return { mode: 'all-banks' }
   }
 
   if (hasValidBearerToken(authorization, businessToken)) {

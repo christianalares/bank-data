@@ -1034,3 +1034,34 @@ complete authorization and renewal flow has been verified. Before deployment,
 review the Railway resource graph, update its legacy build and start commands,
 and inspect a fresh plan for every existing resource, especially Postgres and
 its volume.
+
+## 2026-10-02 all-bank Executor scope
+
+The user prefers one Executor MCP connection that can read every selected bank
+and identify which bank each transaction came from. Existing business and
+personal tokens have separate scopes. The new optional `MCP_ALL_BANKS_TOKEN`
+uses a dedicated MCP context with only three read-only tools:
+`list_all_bank_accounts`, `list_all_bank_transactions`, and
+`summarize_all_bank_transactions`. The existing business and personal tokens
+retain their current tool sets. The all-bank token must be distinct from the
+business and consent tokens and at least 32 characters long.
+
+The service derives the personal workspace from the business workspace owner,
+reads selected accounts from both workspaces, and labels each account and
+transaction with `bankName` and `workspaceKind`. `bankName` comes from the
+connection's Enable Banking ASPSP metadata, falling back to its display name.
+The all-bank transaction query returns booked rows, decrypts personal display
+fields, supports bank/account/date filters and cursor pagination, and exposes
+connection status and last sync time. Totals group by bank, workspace, and
+currency. These labels identify the bank; they are not spending categories.
+
+A read-only run of the new local service against the production database found
+one selected Nordea account group, two Revolut groups, and four SEB groups.
+Their booked counts were Nordea 1,957, Revolut 597, and SEB 222, all in SEK.
+The combined query traversed 2,776 unique rows in 14 pages of up to 200,
+matching the totals exactly. One sampled transaction from each bank carried
+the expected bank label. The SEB connections currently report error or
+disconnected, but their stored booked history remains readable. All-bank MCP
+tool scope, bank-name derivation, bearer token validation, the full test suite,
+typechecks, Biome, and server build passed locally. No schema or database data
+was changed for this scope.

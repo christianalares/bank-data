@@ -15,6 +15,8 @@ Both transports require:
 The HTTP transport also requires:
 
 - `MCP_API_TOKEN`: random bearer token with at least 32 characters
+- `MCP_ALL_BANKS_TOKEN`: optional, distinct bearer token with at least 32 characters for a
+  read-only view of selected personal and business bank accounts in one MCP connection
 - `PORT`: HTTP port; Railway provides this automatically
 - `MCP_ALLOWED_HOSTS`: optional comma-separated custom domains; Railway's generated public domain
   is allowed automatically
@@ -48,6 +50,19 @@ Personal MCP tokens created under **Personal > Connections** expose only these r
 
 They never expose IBANs, raw provider payloads, invoice tools, or mutation tools. Every personal tool
 call is recorded in the MCP access log without storing the text of the user’s search query.
+
+The dedicated `MCP_ALL_BANKS_TOKEN` exposes only these read-only tools:
+
+- `list_all_bank_accounts`
+- `list_all_bank_transactions`
+- `summarize_all_bank_transactions`
+
+They return `bankName` (such as Nordea, SEB, or Revolut) and `workspaceKind` on each account and
+transaction. The totals tool groups booked counts and amounts by bank, workspace, and currency.
+Use `bankName` to filter one bank within the same connection. All-bank access includes personal
+transaction descriptions, so keep this token separate from existing business and personal tokens.
+Connection status and last sync time show whether provider data is fresh; stored history can still
+be read while a bank is disconnected.
 
 All list results are cursor-paginated. Pass the returned `nextCursor` into the next call with the
 same filters.

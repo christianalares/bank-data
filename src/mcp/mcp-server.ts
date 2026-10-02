@@ -26,11 +26,17 @@ import {
   recoverBankSelection,
   startBankConsent,
 } from '../banking/consent-service'
+import { AllBankReadService } from '../finance/all-bank-service'
 import {
+  allBankAccountsSchema,
+  allBankReadInputSchema,
+  allBankTotalsSchema,
+  allBankTransactionPageSchema,
   bankAccountsSchema,
   bankReadInputSchema,
   bankTotalsSchema,
   bankTransactionPageSchema,
+  listAllBankTransactionsInputSchema,
   listBankTransactionsInputSchema,
 } from '../finance/bank-schemas'
 import { BankReadService } from '../finance/bank-service'
@@ -76,6 +82,7 @@ const attachmentImageInputSchema = z.object({
 
 export type FinanceMcpContext =
   | { mode: 'business' }
+  | { mode: 'all-banks' }
   | { mode: 'personal'; workspaceId: string; tokenId: string }
   | { mode: 'consent' }
 
@@ -86,6 +93,12 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
 
   if (context.mode === 'personal') {
     return createPersonalFinanceMcpServer(context)
+  }
+
+  if (context.mode === 'all-banks') {
+    const server = new McpServer({ name: 'hidden-village-all-banks', version: '0.1.0' })
+    registerAllBankReadTools(server)
+    return server
   }
 
   const server = new McpServer({
@@ -431,6 +444,85 @@ function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mo
   )
 
   return server
+}
+
+function registerAllBankReadTools(server: McpServer) {
+  const bank = new AllBankReadService()
+  const audit = (toolName: string, input: Record<string, unknown>, resultCount: number) => {
+    console.info(
+      JSON.stringify({
+        event: 'bank_mcp_read',
+        scope: 'all',
+        toolName,
+        filters: {
+          hasBankFilter: typeof input.bankName === 'string',
+          hasAccountFilter: typeof input.accountId === 'string',
+          dateFrom: input.dateFrom,
+          dateTo: input.dateTo,
+          limit: input.limit,
+          hasCursor: typeof input.cursor === 'string',
+        },
+        resultCount,
+      }),
+    )
+  }
+
+  server.registerTool(
+    'list_all_bank_accounts',
+    {
+      title: 'List all selected bank accounts',
+      description:
+        'List selected personal and business accounts across every bank owned by this workspace owner. Each account includes bankName and workspaceKind. Connection status and last sync time indicate freshness.',
+      outputSchema: allBankAccountsSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async () =>
+      executeOperation(async () => {
+        const result = await bank.listAccounts()
+        audit('list_all_bank_accounts', {}, result.accounts.length)
+        return result
+      }),
+  )
+
+  server.registerTool(
+    'list_all_bank_transactions',
+    {
+      title: 'List all booked bank transactions',
+      description:
+        'Read booked transactions across selected personal and business accounts. Each row includes bankName and workspaceKind. Filter by bankName, accountId, or inclusive UTC dates; follow nextCursor while incompletePage is true. Results are newest first and stored history may be incomplete.',
+      inputSchema: listAllBankTransactionsInputSchema,
+      outputSchema: allBankTransactionPageSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await bank.listTransactions(input)
+        audit('list_all_bank_transactions', input, result.transactions.length)
+        return result
+      }),
+  )
+
+  server.registerTool(
+    'summarize_all_bank_transactions',
+    {
+      title: 'Summarize all booked bank transactions',
+      description:
+        'Return exact booked counts and credit, debit, and net totals grouped by bankName, workspaceKind, and original currency across selected personal and business accounts. Filter by bankName, accountId, or inclusive UTC dates.',
+      inputSchema: allBankReadInputSchema,
+      outputSchema: allBankTotalsSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await bank.getTotals(input)
+        audit(
+          'summarize_all_bank_transactions',
+          input,
+          result.totals.reduce((sum, row) => sum + row.transactionCount, 0),
+        )
+        return result
+      }),
+  )
 }
 
 function registerBankReadTools(
