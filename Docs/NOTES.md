@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 10:30 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 14: preserve history while preparing stale-connection cleanup
 
@@ -26,8 +26,14 @@ unsafe. The read-only MCP account grouping now uses normalized business IBAN
 and currency, as it already does for personal renewals. The active source
 supplies balance and freshness, while both source account IDs stay in the
 transaction query. This removes the duplicate disconnected SEB account entries
-from the MCP presentation once deployed; it does not alter database rows or
-clear the active SEB rate-limit error.
+from the MCP presentation; it does not alter database rows or clear the active
+SEB rate-limit error. Commit `2cedd7a` deployed successfully to both `mcp`
+and `bank-sync`. An authenticated production all-bank MCP read returned five
+account groups: one Nordea, two Revolut, and two SEB. The tool's booked totals
+remained 1,957 Nordea + 597 Revolut + 222 SEB = 2,776. Paginating both SEB
+account groups returned 222 unique booked rows in one group and zero in the
+other. Both SEB groups still report the current active connection's `error`
+status. No provider sync was triggered by these reads.
 
 The prior locally documented dump was unavailable on this machine. A fresh
 custom-format production dump was streamed to
