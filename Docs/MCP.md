@@ -3,6 +3,10 @@
 MCP server for searching transactions, viewing invoice attachments through short-lived signed
 links, and managing transaction matches without exposing raw document bytes.
 
+The hosted endpoint is `https://bank-data.example.invalid/mcp`. The former
+`legacy-bank-data.example.invalid` hostname remains an alias during client and
+bank consent redirect migration.
+
 ## Configuration
 
 Both transports require:
