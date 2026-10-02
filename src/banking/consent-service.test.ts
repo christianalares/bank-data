@@ -193,6 +193,13 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
     )
     expect(firstCallback.status).toBe(303)
     expect(firstCallback.headers.get('set-cookie')).toContain('SameSite=None')
+    const duplicateCallback = await originalFetch(
+      `http://127.0.0.1:${port}/banking/callback?code=mock-code&state=${authorizationState}`,
+      { redirect: 'manual' },
+    )
+    expect(duplicateCallback.status).toBe(303)
+    expect(duplicateCallback.headers.get('location')).toBe('/banking/select')
+    expect(providerSessionCount).toBe(1)
     const firstCookie = firstCallback.headers.get('set-cookie')?.split(';')[0]
     expect(firstCookie).toMatch(/^hv_bank_selection=/)
     const selection = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
