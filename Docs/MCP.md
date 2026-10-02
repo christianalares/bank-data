@@ -59,7 +59,9 @@ The dedicated `MCP_ALL_BANKS_TOKEN` exposes only these read-only tools:
 
 They return `bankName` (such as Nordea, SEB, or Revolut) and `workspaceKind` on each account and
 transaction. The totals tool groups booked counts and amounts by bank, workspace, and currency.
-Use `bankName` to filter one bank within the same connection. All-bank access includes personal
+Use `bankName` and/or `workspaceKind` to filter one bank or personal/business workspace within the
+same connection. Unfiltered transaction pages interleave banks by booking date; callers should
+group rows by bank and workspace or ask the user which source they mean. All-bank access includes personal
 transaction descriptions, so keep this token separate from existing business and personal tokens.
 Connection status and last sync time show whether provider data is fresh; stored history can still
 be read while a bank is disconnected.

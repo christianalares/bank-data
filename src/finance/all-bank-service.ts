@@ -182,17 +182,17 @@ export class AllBankReadService {
       .sort((a, b) => a.bankName.localeCompare(b.bankName) || a.name.localeCompare(b.name))
   }
 
-  private filterAccounts<T extends { accountId?: string; bankName?: string }>(
-    accounts: CategorizedAccount[],
-    filters: T,
-  ) {
+  private filterAccounts<
+    T extends { accountId?: string; bankName?: string; workspaceKind?: 'personal' | 'business' },
+  >(accounts: CategorizedAccount[], filters: T) {
     const bankName = filters.bankName?.trim().toLocaleLowerCase('en')
     return accounts.filter(
       (account) =>
         (!filters.accountId ||
           account.id === filters.accountId ||
           account.sourceIds.includes(filters.accountId)) &&
-        (!bankName || account.bankName.toLocaleLowerCase('en') === bankName),
+        (!bankName || account.bankName.toLocaleLowerCase('en') === bankName) &&
+        (!filters.workspaceKind || account.workspaceKind === filters.workspaceKind),
     )
   }
 

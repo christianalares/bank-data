@@ -82,10 +82,12 @@ export const allBankAccountsSchema = z.object({
 
 export const allBankReadInputSchema = bankReadInputSchema.safeExtend({
   bankName: z.string().min(1).max(200).optional(),
+  workspaceKind: z.enum(['personal', 'business']).optional(),
 })
 
 export const listAllBankTransactionsInputSchema = listBankTransactionsInputSchema.safeExtend({
   bankName: allBankReadInputSchema.shape.bankName,
+  workspaceKind: allBankReadInputSchema.shape.workspaceKind,
 })
 
 export const allBankTransactionPageSchema = bankTransactionPageSchema.extend({

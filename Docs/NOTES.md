@@ -1084,3 +1084,10 @@ Revolut and provided a continuation cursor. The existing `bank.personal` and
 their tools directly. This local Executor instance saved `allBanks` at `org`
 scope despite a user-scoped add-account link; it runs on one person's machine.
 Reassess that scope before any future shared or hosted Executor deployment.
+
+The user clarified that "categorized" means separating transactions by source
+bank and by personal versus business, rather than spending categories. The
+all-bank transaction and totals tools now accept an explicit `workspaceKind`
+filter in addition to `bankName` and `accountId`. Their descriptions tell
+agents to discover available accounts first, and to avoid presenting an
+unfiltered, time-ordered page as one bank statement.
