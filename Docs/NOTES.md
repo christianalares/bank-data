@@ -1,6 +1,27 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 05:32 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 10:02 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 13: retire the old Executor bank integration
+
+The user requested removal of the old Executor entry after checking that the
+new Bank Data connection was correct. Executor's `bank_data` integration uses
+streamable HTTP at `https://bank-data-mcp.up.railway.app/mcp`. Its only saved
+connection, `tools.bank_data.org.allBanks`, was healthy and returned the same
+booked counts and exact amount aggregates as the old all-bank connection:
+1,957 Nordea, 597 Revolut, and 222 SEB rows across seven selected account
+groups. This comparison used live Executor tool calls, not a database change.
+
+Removed the `hidden_village_bank` catalog integration. Its three connections
+(`allBanks`, `bankPersonal2`, and `hiddenVillageBusinessBank`) disappeared from
+Executor's saved-connection inventory. Removed all 11 policies tied to the
+old business connection; a fresh policy read found no old integration
+patterns. The catalog now lists only `bank_data` among these two integrations.
+After removal, its account and totals tools still succeeded with seven groups
+and 2,776 stored booked rows. The old Executor tool addresses no longer work;
+any consumer still using one must switch to `tools.bank_data.org.allBanks`.
+No MCP credential value, bank consent, Railway resource, database row, or
+direct Raycast entry was changed. Task 09's unattended sync gate remains open.
 
 ## Task 09: bounded bank comparison and unattended gates
 
