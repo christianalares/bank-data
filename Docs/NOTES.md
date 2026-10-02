@@ -1,6 +1,81 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 02:06 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 02:18 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 07: selected account read tools and stable renewal identity
+
+The checkout began clean at `f52c38f`, matching the remote branch. `bd`,
+`br`, and `bv` remain unavailable on this host; the plan ledger carries the
+task status. No database schema, migration, provider request, account row,
+Railway resource, or consent setting was changed for this task.
+
+The business bearer token now offers three read-only bank tools alongside
+the existing business tools. A personal workspace token offers the same
+three tools alongside the existing personal tools. The dedicated bank-consent
+token cannot see bank data tools. `list_bank_accounts` returns every selected
+account in the authorized workspace, including selected company accounts on
+disconnected connections that retain history. It reports the latest known
+balances, connection status, last successful sync, and response time. The
+service never returns an IBAN or provider payload. `list_bank_transactions`
+accepts account and inclusive UTC date filters, pages newest first using a
+cursor, caps each page at 200, and reports `incompletePage`, `nextCursor`,
+response time, and per-account connection freshness. `summarize_bank_transactions`
+uses the same account and date filters and returns exact database decimal
+credits, negative debits, net amounts, and counts by currency. Both reads
+require `status=booked`; the existing personal search and spending summary
+now apply the same predicate.
+
+Personal rows with matching decrypted IBAN and currency inside one workspace
+are one presented account. The oldest selected source row supplies the stable
+public account ID; all source row IDs remain accepted as filter aliases.
+The currently connected row supplies balance and last-sync state, while an
+old name override remains the display name. The old and renewed database
+rows and their transaction histories stay intact. Grouping occurs only in
+memory after workspace and selection filtering. Company accounts are never
+merged by name. If an older source row is later deselected, its public ID
+could change; preserve it as selected while it is the historical archive.
+
+Bank read calls write minimal audit details. Personal calls insert into the
+existing `personal_mcp_audit` table with workspace and token IDs. Business
+calls write structured Railway logs. Filter summaries contain dates, limit,
+and booleans for account and cursor filters, not account IDs, cursor values,
+transaction content, IBANs, or decrypted payloads. Failed operations use a
+generic log marker. Railway log retention is not a durable business audit
+store and should be revisited if persistent business audit evidence is needed.
+
+### Validation and limits
+
+The Task 06 backup was restored into a disposable local PostgreSQL 18
+container, then modified only inside that disposable database with one booked
+and one pending synthetic row on the renewed personal account. Its real
+encrypted account and transaction payloads remained decryptable with the MCP
+service key. Authenticated HTTP MCP calls against that restore confirmed:
+
+- An invalid token gets HTTP 401; the consent token lists no bank read tools.
+- The personal token sees one presented account for the old and renewed rows,
+  with the old stable ID and old name override. The active row supplies the
+  current balance and sync status.
+- A one-row page on the renewed account continues with a cursor into old
+  history. Both old and new source IDs select the same account and return the
+  stable public ID. The synthetic pending row is absent from the new page,
+  the existing personal search, and the booked totals.
+- The business token sees the selected company accounts, including retained
+  disconnected history, and a multi-page booked read. It does not see the
+  personal account. Personal audit rows were written; business read events
+  appeared as structured logs without account identifiers.
+
+The disposable container and one-off verification script were removed after
+the checks. A committed regression test covers stable personal identity,
+active balance and freshness, the old name override, and separate company
+accounts. `pnpm test` passed with 31 tests and one pre-existing skip;
+`pnpm check`, `pnpm typecheck`, `pnpm build:server`, and `pnpm test:smoke`
+passed. No complete
+production MCP transaction retrieval from Executor or the intended devices
+was attempted here; Task 08 owns that acceptance. `incompletePage` means
+more stored booked rows match the query, not that provider history is complete.
+Connection freshness exposes a stale or disconnected source but cannot prove
+that all provider transactions were imported. Task 09 owns the unattended
+cron and provider comparison.
 
 ## Task 06: Railway bank sync deployed with a provider-limited first run
 
