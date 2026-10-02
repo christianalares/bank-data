@@ -4,6 +4,7 @@ services:
     ports:
       - '5433:5432'
     environment:
+      # Existing local volumes were initialized with these database credentials.
       POSTGRES_USER: bank_data
       POSTGRES_PASSWORD: bank_data
       POSTGRES_DB: bank_data

@@ -60,6 +60,7 @@ export default defineRailway((context) => {
       ENABLE_BANKING_APPLICATION_ID: preserve(),
       ENABLE_BANKING_PRIVATE_KEY_BASE64: preserve(),
       MCP_ALLOWED_HOSTS: preserve(),
+      MCP_ALL_BANKS_TOKEN: preserve(),
       MCP_API_TOKEN: preserve(),
       MCP_TRANSPORT: preserve(),
       PERSONAL_DATA_ENCRYPTION_KEY: preserve(),
@@ -86,6 +87,7 @@ export default defineRailway((context) => {
   // Existing service [private resource identifier].
   const web = service('web', {
     source: bankData,
+    // The web service still builds the legacy main-branch package until its retirement.
     build: 'pnpm --filter @bank-data/web build',
     start: 'pnpm --filter @bank-data/web start',
     preDeploy: 'pnpm db:migrate:prod',

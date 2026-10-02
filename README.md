@@ -1,6 +1,8 @@
 # Bank Data
 
-Bank Data bank data service and legacy web routes during the migration.
+Bank data service for personal and business workspaces.
+It syncs booked transactions and exposes read-only MCP tools; the legacy web routes
+remain during migration.
 
 ## Stack
 

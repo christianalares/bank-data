@@ -1,4 +1,4 @@
-# Bank Data finance MCP
+# Bank Data MCP
 
 MCP server for searching transactions, viewing invoice attachments through short-lived signed
 links, and managing transaction matches without exposing raw document bytes.
