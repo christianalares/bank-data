@@ -1,8 +1,44 @@
 # Migration notes and handoff
 
-Updated: 2026-10-01 22:30 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 00:42 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 05: consent service prepared, live verification blocked
+
+### Redirect registration and resumed live check
+
+On 2026-10-02, the user signed in to the Enable Banking Control Panel and
+the coordinating task added
+`https://hidden-village-mcp.up.railway.app/banking/callback` to the existing
+Hidden Village production API application as its third allowed redirect URL.
+The UI reported `Application has been edited`. The coordinating task then
+reopened API applications and verified that the new URL persisted and both
+previous callback URLs remained. No other application setting was changed.
+This is provider UI evidence. A real personal renewal then reached the
+callback and account selection page, but saving the selected account returned
+HTTP 403 with `Account selection is not authorized` on the user's phone. Safe
+Railway HTTP logs show callback GET 303 at 00:38:44 UTC, selection GET 200 at
+00:38:44 UTC, then selection POST 403 at 00:38:55 UTC. The GET confirms the
+signed selection cookie was valid at that point. The POST failure came from
+the request guard, but the logs do not identify which input failed. The old
+connection remains active; the renewal has not been confirmed. Do not ask the
+user to repeat BankID until the form fix is deployed and checked.
+
+The fix accepts a missing `Origin` only when a short-lived signed selection
+cookie and an HMAC-bound form token are both valid. A supplied foreign origin
+still fails. The cookie uses `SameSite=None; Secure` so the provider redirect
+chain can carry it on a form POST. A selection GET also refreshes the existing
+short-lived cookie with that attribute, so a page loaded before deployment
+can be reloaded without repeating bank authorization while the signed cookie
+is still valid. The local integration test now
+covers the missing-origin save, absent token, and foreign origin. The user
+must reload the selection page after deployment to receive the new form token;
+the old form cannot be submitted under the fixed guard.
+
+The checkout was clean and
+matched `origin/codex/bank-mcp-migration` at `491b3ea` on resumption. The
+retained backup still had mode `0600` and its SHA-256 matched the recorded
+value below. The then-latest MCP deployment
+`6f951d8c-d69f-400b-84e8-40599573cb79` remained `SUCCESS`.
 
 The clean branch matched `origin/codex/bank-mcp-migration` at `0e682ce`
 after a fresh fetch. Tasks 01 through 04 were checked against this plan and
@@ -118,13 +154,12 @@ A callback without code and state returned a generic HTTP 400. These are
 live service and read-only database checks, not a real bank authorization.
 
 The new callback URL is
-`https://hidden-village-mcp.up.railway.app/banking/callback`. It must be added
+`https://hidden-village-mcp.up.railway.app/banking/callback`. It was added
 to the existing Enable Banking application's allowed redirect URLs while
-retaining the current web callback. The Control Panel opened at its sign-in
-page, so that registration requires the user's login. Enable Banking's
+retaining the current web callback, as recorded above. Enable Banking's
 [Control Panel guide](https://enablebanking.com/docs/api/control-panel/)
 places application editing under API applications and the application's
-context menu. After the user saves the URL, initiate one consent through the
+context menu. Next, initiate one consent through the
 restricted MCP tool, have the user complete bank consent and account
 selection in a browser, verify the resulting connection and selected accounts
 in Postgres, then repeat as a renewal. Do not mark Task 05 done until both

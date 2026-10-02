@@ -455,6 +455,21 @@ export function readSelectionCookie(value: string | undefined, now = Date.now())
     : null
 }
 
+export function makeSelectionFormToken(selectionCookie: string) {
+  return createHmac('sha256', getConsentCookieSecret())
+    .update(`selection-form:${selectionCookie}`)
+    .digest('base64url')
+}
+
+export function hasValidSelectionFormToken(selectionCookie: string, suppliedToken: string | null) {
+  if (!suppliedToken || !/^[A-Za-z0-9_-]{43}$/.test(suppliedToken)) {
+    return false
+  }
+  const expected = Buffer.from(makeSelectionFormToken(selectionCookie), 'base64url')
+  const received = Buffer.from(suppliedToken, 'base64url')
+  return received.length === expected.length && timingSafeEqual(received, expected)
+}
+
 export async function getBankConsentStatus() {
   const db = createDb()
   const result = [] as Array<{
