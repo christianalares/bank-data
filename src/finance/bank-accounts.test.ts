@@ -108,6 +108,51 @@ describe('selected bank account identity', () => {
 
     expect(await loadSelectedBankAccounts(mockDb(rows), 'workspace', 'business')).toHaveLength(2)
   })
+
+  it('groups a renewed company account with its historical IBAN and keeps both source IDs', async () => {
+    const oldId = '00000000-0000-4000-8000-000000000003'
+    const newId = '00000000-0000-4000-8000-000000000004'
+    const rows = [
+      {
+        account: {
+          ...account(newId, '2026-10-01T00:00:00.000Z', 'Hidden Village AB', null),
+          iban: 'SE12 3456 7890',
+          currentBalance: '200.00',
+        },
+        connection: {
+          name: 'Enable Banking SEB',
+          rawMetadata: null,
+          status: 'error',
+          lastSyncedAt: new Date('2026-10-02T01:00:00.000Z'),
+        },
+      },
+      {
+        account: {
+          ...account(oldId, '2025-01-01T00:00:00.000Z', 'Hidden Village AB', null),
+          iban: 'se1234567890',
+          currentBalance: '100.00',
+        },
+        connection: {
+          name: 'Enable Banking SEB',
+          rawMetadata: null,
+          status: 'disconnected',
+          lastSyncedAt: new Date('2026-08-08T01:00:00.000Z'),
+        },
+      },
+    ]
+
+    const result = await loadSelectedBankAccounts(mockDb(rows), 'workspace', 'business')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: oldId,
+      sourceIds: [newId, oldId],
+      bankName: 'SEB',
+      currentBalance: '200.00',
+      connectionStatus: 'error',
+      lastSyncedAt: '2026-10-02T01:00:00.000Z',
+    })
+  })
 })
 
 afterEach(() => {

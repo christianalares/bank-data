@@ -40,7 +40,9 @@ export async function loadSelectedBankAccounts(
       kind === 'personal' && row.account.encryptedPersonalPayload
         ? decryptPersonalAccountPayload(row.account.encryptedPersonalPayload)
         : null
-    const iban = payload?.iban?.replace(/\s+/g, '').toUpperCase()
+    const iban = (kind === 'personal' ? payload?.iban : row.account.iban)
+      ?.replace(/\s+/g, '')
+      .toUpperCase()
     const key = iban ? `${row.account.currency}:${iban}` : row.account.id
     const group = groups.get(key) ?? []
     group.push(row)

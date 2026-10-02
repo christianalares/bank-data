@@ -1,6 +1,64 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 10:14 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02. Branch: `codex/bank-mcp-migration`.
+
+## Task 14: preserve history while preparing stale-connection cleanup
+
+The user wants to delete the old disconnected bank connections and ultimately
+retire the web app, Trigger.dev jobs, and invoice/storage logic. Production
+cleanup has not started: Task 09 still needs a successful unattended sync and
+SEB remains subject to `ASPSP_RATE_LIMIT_EXCEEDED` (HTTP 429). Do not delete
+the active SEB connection or repeat its provider fetch merely for cleanup.
+
+Read-only production SQL found 2,776 distinct booked transactions: 1,950 on a
+disconnected personal Nordea source, 7 on its renewed connection, 597 on the
+other active personal connection, 128 on a disconnected business SEB source,
+and 94 on the renewed business connection. The historical SEB account with
+128 rows matches exactly one renewed SEB account by normalized IBAN and
+currency; the second historical SEB account with zero rows likewise matches
+one renewed account. The 128-row historical source has 99 linked attachment
+records. All 2,776 booked rows must remain readable, and their transaction
+IDs and attachment links must survive physical connection removal.
+
+Deleting either historical connection under the current schema would cascade
+to its account and transaction rows. This is why a plain connection DELETE is
+unsafe. The read-only MCP account grouping now uses normalized business IBAN
+and currency, as it already does for personal renewals. The active source
+supplies balance and freshness, while both source account IDs stay in the
+transaction query. This removes the duplicate disconnected SEB account entries
+from the MCP presentation once deployed; it does not alter database rows or
+clear the active SEB rate-limit error.
+
+The prior locally documented dump was unavailable on this machine. A fresh
+custom-format production dump was streamed to
+`/Users/christian/.local/share/bank-data/backups/2026-10-02-pre-connection-cleanup.dump`
+outside the repository. Its file mode is `0600`, size 3,941,367 bytes, and
+SHA-256 is
+`73a4256ae91be729339a1fc7cc913042b47db5abf0fe855e383da6c183da63c2`.
+`pg_restore --list` read the archive catalog successfully. A full isolated
+restore of this new dump has not yet been performed on this machine, so it is
+not the final deletion gate. The dump contains sensitive production data.
+
+The production attachment table has 129 rows, all in the business workspace:
+122 matched and linked to transactions, 6 unmatched, and 1 ignored. Their
+registered S3 objects all exist with the expected byte sizes. Read-only bucket
+inventory found 151 objects totaling 20,853,940 bytes. The other 22 objects
+have no attachment row: 19 PDFs and 3 PNGs totaling 1,812,681 bytes. Content
+hashes reveal five distinct orphan contents; one is already present among
+registered attachments, while four distinct contents exist only among the
+orphans (15 object copies). File contents, names, transaction details, and
+credentials were not printed or changed. Treat the four unique orphan
+contents and six unmatched records as review candidates, not as valid invoice
+matches. Keep the bucket until the attachments and transaction-link manifest
+have been exported and verified in their long-term home.
+
+Before physical deletion, test a fresh restore in isolation, prepare a schema
+and data migration that detaches historical accounts and transactions from
+their obsolete connection FKs without changing booked rows or attachment
+references, then compare all-bank MCP IDs and exact totals before and after.
+Only after Task 09's sync gate and this preservation check should the old
+connection rows be removed. Retire the app, Trigger.dev, and bucket separately
+under Task 10 after the attachment archive has been verified.
 
 ## Task 09: user-requested manual sync retry
 
