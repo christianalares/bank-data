@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 00:53 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 00:59 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 05: consent service prepared, live verification blocked
 
@@ -78,6 +78,32 @@ a restrictive content security policy. Local integration passed for a
 cookie-less POST, a missing form token, a foreign origin, and an opaque origin.
 This mobile flow fix still needs production deployment and the user's live
 selection before Task 05 can be marked done.
+
+The mobile form fix deployed as MCP commit `6f87080` and live GET returned
+the signed form proof, CSRF field, and one account checkbox; a deliberate
+POST without the CSRF field returned 403. The user then completed a new Nordea
+authorization in Vivaldi but saw the generic callback error before selection.
+Safe Railway HTTP logs show two GETs to `/banking/callback` from the same IP,
+user agent, and host within 91 ms at 00:56:05 UTC: the first returned 303,
+the second 400. A read-only production query confirms the consent created at
+00:54 UTC remains pending with a completed provider payload and one discovered
+account, while both previous personal connections remain connected. This
+strongly supports a duplicate callback after the first successful one; the
+proxy logs do not retain query parameters, so the two codes and states cannot
+be compared directly. The user's Vivaldi session may still hold the selection
+cookie from the successful 303. The same browser can try `/banking/select`
+without repeating BankID; another browser cannot use that cookie.
+
+The callback is being made idempotent for future flows. The start operation
+stores HMAC hashes of the authorization state, and successful completion adds
+an HMAC hash of the one-time callback code. A repeated callback with the same
+state and code can then return the already completed result without exchanging
+the provider code again. A mismatched code still fails. The local integration
+test verifies a repeated callback returns 303 with no second provider session,
+and replay with a different code returns 400. The current Vivaldi flow began
+before those hashes were stored, so its recovery depends on the cookie in
+that same browser. Do not issue another bank authorization before checking
+that recovery path.
 
 The checkout was clean and
 matched `origin/codex/bank-mcp-migration` at `491b3ea` on resumption. The

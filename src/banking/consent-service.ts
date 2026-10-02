@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { and, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import {
   bankAccount,
   bankConnection,
@@ -36,6 +36,8 @@ type ConsentMetadata = {
   flow: 'mcp-consent'
   aspsp: { name: string; country: string }
   workspaceKind: ConsentWorkspaceKind
+  authorizationStateHash?: string
+  callbackCodeHash?: string
   renewConnectionId?: string
   selectionCompleteAt?: string
 }
@@ -59,6 +61,18 @@ function getConsentCookieSecret() {
     throw new Error('A distinct BANK_CONSENT_COOKIE_SECRET of at least 32 characters is required')
   }
   return secret
+}
+
+function hashAuthorizationState(state: string) {
+  return createHmac('sha256', getConsentCookieSecret())
+    .update(`authorization-state:${state}`)
+    .digest('base64url')
+}
+
+function hashCallbackCode(code: string) {
+  return createHmac('sha256', getConsentCookieSecret())
+    .update(`callback-code:${code}`)
+    .digest('base64url')
 }
 
 export function getConsentRedirectUrl() {
@@ -175,6 +189,7 @@ export async function startBankConsent(input: StartBankConsentInput) {
       flow: 'mcp-consent',
       aspsp: { name, country },
       workspaceKind: input.workspaceKind,
+      authorizationStateHash: hashAuthorizationState(state),
       ...(renewConnectionId ? { renewConnectionId } : {}),
     } satisfies ConsentMetadata,
   })
@@ -201,6 +216,10 @@ export async function completeBankConsent(code: string, state: string) {
     metadata?.flow !== 'mcp-consent' ||
     Date.now() - pending.createdAt.getTime() > PENDING_LIFETIME_MS
   ) {
+    const completed = await findCompletedBankConsent(state, code)
+    if (completed) {
+      return completed
+    }
     throw new Error('Bank authorization has expired or was already completed')
   }
 
@@ -213,6 +232,15 @@ export async function completeBankConsent(code: string, state: string) {
   try {
     session = await enableBankingRequest('/sessions', { method: 'POST', body: { code } })
   } catch {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      const completed = await findCompletedBankConsent(state, code)
+      if (completed) {
+        return completed
+      }
+    }
     throw new Error('Bank authorization could not be completed')
   }
   if (!session.session_id) {
@@ -306,6 +334,7 @@ export async function completeBankConsent(code: string, state: string) {
       name: `Enable Banking ${session.aspsp?.name ?? metadata.aspsp.name}`,
       rawMetadata: {
         ...metadata,
+        callbackCodeHash: hashCallbackCode(code),
         aspsp: {
           name: session.aspsp?.name ?? metadata.aspsp.name,
           country: session.aspsp?.country ?? metadata.aspsp.country,
@@ -325,6 +354,43 @@ export async function completeBankConsent(code: string, state: string) {
     )
   }
   return { connectionId: pending.id, needsSelection: kind === 'personal' }
+}
+
+async function findCompletedBankConsent(state: string, code: string) {
+  const stateHash = hashAuthorizationState(state)
+  const codeHash = hashCallbackCode(code)
+  const db = createDb()
+  const connections = await db.query.bankConnection.findMany({
+    where: (table, { eq }) =>
+      and(
+        eq(table.provider, 'enable_banking'),
+        sql`${table.rawMetadata}->>'authorizationStateHash' = ${stateHash}`,
+      ),
+  })
+  for (const connection of connections) {
+    const metadata = connection.rawMetadata as ConsentMetadata | null
+    if (
+      metadata?.flow !== 'mcp-consent' ||
+      metadata.callbackCodeHash !== codeHash ||
+      connection.providerConnectionId.startsWith('auth:') ||
+      !['pending', 'connected'].includes(connection.status) ||
+      Date.now() - connection.updatedAt.getTime() > PENDING_LIFETIME_MS
+    ) {
+      continue
+    }
+    const accounts = await db.query.bankAccount.findMany({
+      where: (table, { eq }) => eq(table.connectionId, connection.id),
+      columns: { id: true },
+      limit: 1,
+    })
+    if (accounts.length > 0) {
+      return {
+        connectionId: connection.id,
+        needsSelection: connection.status === 'pending' && metadata.workspaceKind === 'personal',
+      }
+    }
+  }
+  return null
 }
 
 export async function getBankSelection(connectionId: string) {
