@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 00:42 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 00:50 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 05: consent service prepared, live verification blocked
 
@@ -33,6 +33,34 @@ is still valid. The local integration test now
 covers the missing-origin save, absent token, and foreign origin. The user
 must reload the selection page after deployment to receive the new form token;
 the old form cannot be submitted under the fixed guard.
+
+The fix passed typechecks, Biome, the full unit suite, a fresh migrated
+Postgres 18 integration run, the root build, Drizzle check, and the MCP smoke
+test. The retained backup checksum still matched the pre-Task-05 record. A
+fresh Railway plan reported no infrastructure changes. GitHub HTTPS push
+could not read the local macOS credential, and `gh` reported its token invalid.
+The same five committed file blobs and tree were published through the
+connected GitHub API as commit `6a20a6d`; their blob and tree hashes matched
+the local commit. The branch ref advanced without force. A subsequent public
+fetch confirmed the remote commit and the local branch was aligned to it with
+the identical tree. Railway deployed that commit to the MCP service as
+`be48c1f3-3560-40ee-97eb-abaeaecf4391`, which reached `SUCCESS` at
+00:44:55 UTC. A read-only production aggregate showed two existing personal
+connections still connected and two new pending connections, one with a
+completed callback and one discovered account. A deployed-service GET for the
+pending selection returned 200, `SameSite=None`, a form token, and one
+account checkbox. No account selection was submitted by this check. The user
+was asked to reload and submit the phone form before the signed cookie expires.
+The user requested a fresh link when the first selection session was lost.
+A new personal Nordea renewal was initiated through the restricted MCP tool
+without changing the old connected rows. The callback again returned 303 and
+the selection GET 200 at 00:49:27 UTC, but the phone selection POST returned
+403 at 00:49:36 UTC. The earlier guard fix therefore has not solved the live
+phone issue. A follow-up patch records only guard booleans and a phase label
+on rejected POSTs, without IDs, cookies, request bodies, headers, or account
+details. The user should retain the current phone session while this diagnosis
+is deployed; do not ask for another BankID flow yet. Task 05 remains blocked
+until the guard cause is identified and the live save and renewal are confirmed.
 
 The checkout was clean and
 matched `origin/codex/bank-mcp-migration` at `491b3ea` on resumption. The
