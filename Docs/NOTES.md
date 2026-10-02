@@ -1065,3 +1065,22 @@ disconnected, but their stored booked history remains readable. All-bank MCP
 tool scope, bank-name derivation, bearer token validation, the full test suite,
 typechecks, Biome, and server build passed locally. No schema or database data
 was changed for this scope.
+
+The new code was pushed as `392b344` to `codex/bank-mcp-migration`, the branch
+tracked by Railway's production `mcp` service. Railway deployed that commit,
+then a 64-character random `MCP_ALL_BANKS_TOKEN` was set on the `mcp` service,
+triggering a second successful deployment. The bearer value was never printed
+or stored in the repository. An authenticated remote MCP call returned only the
+three all-bank tools and the expected per-bank counts; the existing business
+bearer did not expose those tools.
+
+Executor's existing `hidden_village_bank` integration now has a healthy
+`tools.hidden_village_bank.org.allBanks` connection. Its live
+`list_all_bank_accounts` returned one Nordea, two Revolut, and four SEB selected
+account groups. `summarize_all_bank_transactions` returned the same 1,957,
+597, and 222 counts, and a Revolut-filtered five-row page labeled every row
+Revolut and provided a continuation cursor. The existing `bank.personal` and
+`bank.business` connections were retained because consumers may still address
+their tools directly. This local Executor instance saved `allBanks` at `org`
+scope despite a user-scoped add-account link; it runs on one person's machine.
+Reassess that scope before any future shared or hosted Executor deployment.
