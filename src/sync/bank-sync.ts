@@ -606,7 +606,7 @@ function isConsentFailure(message: string) {
     message.includes('(401)') ||
     message.includes('(403)') ||
     message === 'Bank consent expired' ||
-    message === ENABLE_BANKING_NO_ACCOUNTS_ERROR
+    message.startsWith('The bank authorized this consent but returned no accessible accounts.')
   )
 }
 
