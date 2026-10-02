@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { NormalizedEnableBankingTransaction } from '#banking'
 import { type bankTransaction, encryptPersonalTransactionPayload } from '#db'
 
-import { matchesHistoricalTransaction } from './bank-sync'
+import { matchesHistoricalTransaction, retryProvider, shouldDeferBackgroundSync } from './bank-sync'
 
 const bookedAt = new Date('2026-09-28T00:00:00.000Z')
 type BankTransaction = typeof bankTransaction.$inferSelect
@@ -95,5 +95,47 @@ describe('bank sync overlap across renewed consents', () => {
         { ...historical('same-reference'), bookedAt: new Date('2026-09-25T00:00:00.000Z') },
       ]),
     ).toThrow('moved more than one booking day')
+  })
+})
+
+describe('bank background-fetch limits', () => {
+  const lastFetchAt = new Date('2026-10-02T02:04:11.000Z')
+  const soonAfter = new Date('2026-10-02T02:10:00.000Z')
+  const nextDay = new Date('2026-10-03T02:00:00.000Z')
+
+  it('defers recently synced and rate-limited connections until the bank window has passed', () => {
+    const connected = {
+      status: 'connected' as const,
+      errorMessage: null,
+      lastSyncedAt: lastFetchAt,
+      updatedAt: lastFetchAt,
+    }
+    const rateLimited = {
+      ...connected,
+      status: 'error' as const,
+      errorMessage: 'Enable Banking request failed (429): ASPSP_RATE_LIMIT_EXCEEDED',
+    }
+
+    expect(shouldDeferBackgroundSync(connected, soonAfter)).toBe(true)
+    expect(shouldDeferBackgroundSync(rateLimited, soonAfter)).toBe(true)
+    expect(shouldDeferBackgroundSync(connected, nextDay)).toBe(false)
+    expect(shouldDeferBackgroundSync(rateLimited, nextDay)).toBe(false)
+    expect(
+      shouldDeferBackgroundSync(
+        { ...rateLimited, errorMessage: 'Enable Banking request failed (500)' },
+        soonAfter,
+      ),
+    ).toBe(false)
+  })
+
+  it('does not immediately retry a bank-side rate limit', async () => {
+    let calls = 0
+    await expect(
+      retryProvider(async () => {
+        calls += 1
+        throw new Error('Enable Banking request failed (429): ASPSP_RATE_LIMIT_EXCEEDED')
+      }),
+    ).rejects.toThrow('ASPSP_RATE_LIMIT_EXCEEDED')
+    expect(calls).toBe(1)
   })
 })

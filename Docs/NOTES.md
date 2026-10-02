@@ -1,8 +1,8 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 01:25 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 02:06 UTC. Branch: `codex/bank-mcp-migration`.
 
-## Task 06: Railway bank sync in progress
+## Task 06: Railway bank sync deployed with a provider-limited first run
 
 The checkout began clean at `f6ad675`, matched
 `origin/codex/bank-mcp-migration`, and had full filesystem and network access
@@ -12,7 +12,15 @@ protected Postgres service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60` and the
 existing MCP, web, volume, and bucket. A fresh plan before edits reported no
 changes. After adding `bank-sync`, the production plan reported exactly one
 safe resource creation, zero diagnostics, and no changes to the five existing
-resources. No plan has been applied yet.
+resources. A pinned apply created only `bank-sync`, service
+`0299c74f-e87c-41ea-9e5c-b5c4c5ee0816`, from tested commit `1231ba1`.
+It used variable references to the existing Postgres and MCP services. The
+new service build reached `SUCCESS`, with a daily schedule at 02:00 UTC.
+Postgres, its volume, MCP, web, and the bucket were not changed by the
+apply. Pushing the branch separately redeployed MCP from the same commit;
+that deployment reached `SUCCESS`. Railway normalized the cron restart
+policy to `NEVER`; the authoring file now states that value, and a fresh
+production plan reports no changes and zero diagnostics.
 
 A fresh production `pg_dump` was streamed into
 `/Users/christian/.local/share/hidden-village/backups/2026-10-02-pre-task-06.dump`
@@ -55,13 +63,51 @@ The older account and its rows were not updated or removed. The initial full
 run's other provider connection remained rate-limited, so a complete
 all-connection run has not yet passed.
 
-The existing production Trigger.dev banking schedule is active. It must be
-deactivated only after the Railway process has completed a real production
-run, while keeping the old job code available for rollback. Railway cron
-uses UTC, so `0 2 * * *` runs at 03:00 CET or 04:00 CEST. The next steps are
-to push the code, refresh and review the additive plan, create the service,
-verify a production run and database aggregates, then deactivate the old
-schedule. Do not consider Task 06 complete until that handoff succeeds.
+The old Trigger.dev banking run completed at 01:01:38 UTC on 2026-10-02.
+Its schedule was then deactivated and read back as inactive, with zero active
+banking runs, before the Railway service was created. The Trigger job code
+remains available for rollback. The new cron uses UTC, so `0 2 * * *` runs at
+03:00 CET or 04:00 CEST. Railway keeps the cron deployment idle between runs
+and schedules the next container execution for 02:00 UTC each day.
+
+With Trigger inactive, a bounded production import for only the renewed
+personal account used the committed `dist/sync.js`, Railway production
+variables, and the protected database through its public TCP proxy. This
+manual local process is distinct from a Railway container run. It succeeded
+with one connection and one account, seven new-account transaction upserts,
+184 historical overlaps skipped, zero booking-date drifts, three abandoned
+pending attempts expired, and a recorded success time. Read-only production
+queries then confirmed 2,776 booked transactions, zero pending connections,
+zero repeated internal IDs, seven rows on the renewed account, 1,950 rows
+on the old account, and a recent `lastSyncedAt`. A separate safe comparison
+of decrypted personal account payloads confirmed the old name override was
+copied to the new row without revealing names or IBANs. The fresh backup
+checksum still matched before the apply and manual run.
+
+At 02:00 UTC on 2026-10-02, Railway advanced `nextCronRunAt` to 2026-10-03
+02:00 UTC, but no container start was logged on the original deployment. A
+from-source redeploy at 02:02 UTC started a Railway container at 02:03:41.
+It exited nonzero at 02:04:11 because the other personal connection received
+`ASPSP_RATE_LIMIT_EXCEEDED` (HTTP 429). This proves container startup and
+the production entry point, but not a successful unattended cron import.
+Read-only production checks after the run found 2,776 booked rows and 2,776
+distinct internal IDs. Two active connections are `connected`; the limited
+connection is `error`, retains 94 booked rows and its prior `lastSyncedAt`,
+and remains eligible for the next sync. The old 1,950-row account and the new
+seven-row account were retained. Enable Banking's
+[FAQ](https://enablebanking.com/docs/faq/) identifies this error as an ASPSP
+background-fetch limit and recommends waiting six hours. Immediate retries
+for this specific error have now been removed from the source. A six-hour
+background-fetch guard also defers recently synced or rate-limited
+connections when a deployment starts the process before the next scheduled
+run. Local tests confirm one provider call for this 429, and a read-only
+evaluation against the three production connection timestamps confirmed that
+all three would defer immediately after this run. The daily job will retry
+the limited connection after 24 hours, while generic transient provider
+failures still receive short backoff. Task 09 must confirm the next
+successful unattended run, the provider-limited connection's recovery, and
+stable database aggregates. Do not reactivate the Trigger schedule
+concurrently.
 
 ## Task 05: live consent and renewal verified
 

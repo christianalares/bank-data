@@ -73,8 +73,7 @@ export default defineRailway((context) => {
     start: 'pnpm start:sync',
     deploy: {
       cronSchedule: '0 2 * * *',
-      restartPolicyType: 'ON_FAILURE',
-      restartPolicyMaxRetries: 2,
+      restartPolicyType: 'NEVER',
     },
     replicas: { 'europe-west4-drams3a': 1 },
     env: {
