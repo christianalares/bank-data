@@ -1115,3 +1115,28 @@ expired authorization. No new consent was started. The bank-sync service is
 scheduled for 02:00 UTC daily, so Task 09 should check the 2026-10-03 run
 for recovery before considering reauthorization. The older business and
 personal Executor connections remain in place for their existing consumers.
+
+## 2026-10-02 Bank Data rename
+
+The repository is now `christianalares/bank-data`, the local checkout is
+`/Users/christian/dev/own/bank-data`, and the existing Railway project is named
+`bank-data`. The deployed MCP service has a new active domain,
+`bank-data-mcp.up.railway.app`; its old domain remains an alias. The code and
+package names use Bank Data while compatibility identifiers, the business
+workspace name, and historical notes retain their original values. The
+production Railway IaC plan reports no changes. The existing Postgres service,
+database, migrations, bank consents, and service IDs were not replaced.
+
+Executor has a healthy `bank_data` integration and
+`tools.bank_data.org.allBanks` connection using the saved all-bank credential.
+Its three read-only tools returned selected Nordea, SEB, and Revolut accounts
+and grouped booked totals. Older Executor connections remain available during
+client migration.
+
+In Enable Banking's existing production API application, the name is now
+`Bank Data`, the description covers the owner's accounts, and
+`https://bank-data-mcp.up.railway.app/banking/callback` is a fourth allowed
+redirect URL. The three earlier callback URLs remain allowed. The MCP service's
+`BANK_CONSENT_REDIRECT_ORIGIN` now points to the new domain; the resulting
+Railway deployment succeeded. No new consent was started. The old callback and
+domain remain available for in-flight authorizations and older clients.
