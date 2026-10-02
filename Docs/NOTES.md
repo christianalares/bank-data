@@ -1,6 +1,67 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 01:09 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 01:25 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 06: Railway bank sync in progress
+
+The checkout began clean at `f6ad675`, matched
+`origin/codex/bank-mcp-migration`, and had full filesystem and network access
+without approval prompts. `bd`, `br`, and `bv` are unavailable on this host,
+so this ledger carries Task 06 status. Fresh Railway status still showed the
+protected Postgres service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60` and the
+existing MCP, web, volume, and bucket. A fresh plan before edits reported no
+changes. After adding `bank-sync`, the production plan reported exactly one
+safe resource creation, zero diagnostics, and no changes to the five existing
+resources. No plan has been applied yet.
+
+A fresh production `pg_dump` was streamed into
+`/Users/christian/.local/share/hidden-village/backups/2026-10-02-pre-task-06.dump`
+without printing its contents. The file has mode `0600`, size 3,935,929
+bytes, and SHA-256
+`4a25a4753bc1639cd50205c2da0422247c6b458a94485d194092a79bd2dee28c`.
+It restored without error into a disposable local PostgreSQL 18 container.
+The restored snapshot had 11 bank connections, 11 bank accounts, 2,769 bank
+transactions, and 15 Drizzle migrations. This backup contains sensitive data
+and remains outside the repository. Never restore it over the Railway service.
+
+The new `src/sync/bank-sync.ts` runs separately from Trigger.dev. It reads
+connected and transient-error connections, retries provider reads, advances
+`lastSyncedAt` only after each connection succeeds, exits after closing the
+database client, and reports the latest success in its JSON result. Provider
+pagination now rejects missing transaction arrays and repeated continuation
+keys. The provider boundary still requests `BOOK` and excludes `PDNG`.
+Duplicate provider references on a page are deduplicated before upsert.
+Personal renewal matching uses the encrypted IBAN and currency within one
+workspace. It retains the old account and transaction rows, copies its name
+override to the new account, and skips transactions already present on the
+old account. Ambiguous cross-consent matches fail without adding another row.
+Stale MCP pending consent rows, including abandoned account-selection
+sessions, are marked disconnected after 30 minutes; their rows are retained.
+
+An isolated run used the restored local database and live Enable Banking
+credentials for read-only provider requests. The first full run found a
+cross-consent booking-date difference and one provider HTTP 429; neither
+changed production. The date difference was caused by local-time parsing of
+date-only provider values in the Swedish process timezone. Parsing now uses
+UTC midnight, which matches the existing Railway data. The sync avoids an
+unneeded account-details request and backs off longer for 429 responses.
+A targeted rerun on the restored database succeeded: one renewed account,
+seven new-account transaction upserts, 26 historical overlaps skipped, zero
+booking-date drifts, and a recorded success time. Across local runs, all
+three abandoned MCP pending attempts were marked disconnected. A safe local
+comparison confirmed the old account still held 1,950 rows, the new account
+held seven, the encrypted IBANs matched, and the old name override was copied.
+The older account and its rows were not updated or removed. The initial full
+run's other provider connection remained rate-limited, so a complete
+all-connection run has not yet passed.
+
+The existing production Trigger.dev banking schedule is active. It must be
+deactivated only after the Railway process has completed a real production
+run, while keeping the old job code available for rollback. Railway cron
+uses UTC, so `0 2 * * *` runs at 03:00 CET or 04:00 CEST. The next steps are
+to push the code, refresh and review the additive plan, create the service,
+verify a production run and database aggregates, then deactivate the old
+schedule. Do not consider Task 06 complete until that handoff succeeds.
 
 ## Task 05: live consent and renewal verified
 
