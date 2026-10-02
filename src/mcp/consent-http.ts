@@ -94,11 +94,21 @@ export async function handleBankConsentHttp(
     const selectionCookie = getCookie(request, COOKIE_NAME)
     const connectionId = readSelectionCookie(selectionCookie)
     const expectedOrigin = new URL(getConsentRedirectUrl()).origin
-    if (
-      !connectionId ||
-      (request.headers.origin !== undefined && request.headers.origin !== expectedOrigin) ||
-      !request.headers['content-type']?.startsWith('application/x-www-form-urlencoded')
-    ) {
+    const originState =
+      request.headers.origin === undefined
+        ? 'missing'
+        : request.headers.origin === expectedOrigin
+          ? 'expected'
+          : 'other'
+    const formContentType =
+      request.headers['content-type']?.startsWith('application/x-www-form-urlencoded') === true
+    if (!connectionId || originState === 'other' || !formContentType) {
+      console.warn('Bank account selection rejected', {
+        phase: 'request',
+        cookieValid: Boolean(connectionId),
+        originState,
+        formContentType,
+      })
       sendHtml(response, 403, '<h1>Account selection is not authorized</h1>')
       return
     }
@@ -106,6 +116,10 @@ export async function handleBankConsentHttp(
       const body = await readSmallBody(request)
       const form = new URLSearchParams(body)
       if (!hasValidSelectionFormToken(selectionCookie as string, form.get('csrf'))) {
+        console.warn('Bank account selection rejected', {
+          phase: 'form',
+          tokenPresent: form.has('csrf'),
+        })
         sendHtml(response, 403, '<h1>Account selection is not authorized</h1>')
         return
       }
