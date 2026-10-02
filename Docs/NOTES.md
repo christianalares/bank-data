@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 00:50 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 00:53 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 05: consent service prepared, live verification blocked
 
@@ -61,6 +61,23 @@ on rejected POSTs, without IDs, cookies, request bodies, headers, or account
 details. The user should retain the current phone session while this diagnosis
 is deployed; do not ask for another BankID flow yet. Task 05 remains blocked
 until the guard cause is identified and the live save and renewal are confirmed.
+
+The user's screenshots confirm the 403 was in the original iOS in-app browser.
+Opening `/banking/select` separately in Vivaldi showed `Account selection
+expired`, which is expected because that browser did not have the signed
+selection cookie. The exact failed POST check cannot be recovered from the
+earlier logs. Safe boolean diagnostics are deployed on commit `ab8decf` and
+will identify the failing phase on any new POST. To support the possibility
+that the in-app browser omits its cookie on POST, the selection form now also
+carries the short-lived signed proof issued on GET. The POST verifies that
+proof, an independent HMAC form token, its expiry, a form content type, and
+any supplied origin. A foreign origin still fails; an absent or opaque origin
+is accepted only with valid signed form credentials. The proof remains in the
+form body, with `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, and
+a restrictive content security policy. Local integration passed for a
+cookie-less POST, a missing form token, a foreign origin, and an opaque origin.
+This mobile flow fix still needs production deployment and the user's live
+selection before Task 05 can be marked done.
 
 The checkout was clean and
 matched `origin/codex/bank-mcp-migration` at `491b3ea` on resumption. The

@@ -82,7 +82,7 @@ export async function handleBankConsentHttp(
       sendHtml(
         response,
         200,
-        `<h1>Select accounts to sync</h1><form method="post" action="/banking/select"><input type="hidden" name="csrf" value="${makeSelectionFormToken(selectionCookie as string)}">${rows}<button type="submit">Save selection</button></form>`,
+        `<h1>Select accounts to sync</h1><form method="post" action="/banking/select"><input type="hidden" name="selection" value="${selectionCookie}"><input type="hidden" name="csrf" value="${makeSelectionFormToken(selectionCookie as string)}">${rows}<button type="submit">Save selection</button></form>`,
       )
     } catch {
       sendHtml(response, 403, '<h1>Account selection is no longer available</h1>')
@@ -92,20 +92,21 @@ export async function handleBankConsentHttp(
 
   if (url.pathname === '/banking/select' && request.method === 'POST') {
     const selectionCookie = getCookie(request, COOKIE_NAME)
-    const connectionId = readSelectionCookie(selectionCookie)
     const expectedOrigin = new URL(getConsentRedirectUrl()).origin
     const originState =
       request.headers.origin === undefined
         ? 'missing'
         : request.headers.origin === expectedOrigin
           ? 'expected'
-          : 'other'
+          : request.headers.origin === 'null'
+            ? 'opaque'
+            : 'other'
     const formContentType =
       request.headers['content-type']?.startsWith('application/x-www-form-urlencoded') === true
-    if (!connectionId || originState === 'other' || !formContentType) {
+    if (originState === 'other' || !formContentType) {
       console.warn('Bank account selection rejected', {
         phase: 'request',
-        cookieValid: Boolean(connectionId),
+        cookieValid: Boolean(readSelectionCookie(selectionCookie)),
         originState,
         formContentType,
       })
@@ -115,10 +116,17 @@ export async function handleBankConsentHttp(
     try {
       const body = await readSmallBody(request)
       const form = new URLSearchParams(body)
-      if (!hasValidSelectionFormToken(selectionCookie as string, form.get('csrf'))) {
+      const selectionProof = form.has('selection') ? form.get('selection') : selectionCookie
+      const connectionId = readSelectionCookie(selectionProof ?? undefined)
+      const formTokenValid = hasValidSelectionFormToken(selectionProof ?? '', form.get('csrf'))
+      if (!connectionId || !formTokenValid) {
         console.warn('Bank account selection rejected', {
           phase: 'form',
+          cookieValid: Boolean(readSelectionCookie(selectionCookie)),
+          proofPresent: Boolean(selectionProof),
+          proofValid: Boolean(connectionId),
           tokenPresent: form.has('csrf'),
+          tokenValid: formTokenValid,
         })
         sendHtml(response, 403, '<h1>Account selection is not authorized</h1>')
         return
