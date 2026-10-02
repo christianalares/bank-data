@@ -204,8 +204,10 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
     expect(page).not.toContain('mock-account-uid')
     expect(page).not.toContain('mock-code')
     const accountId = /name="account" value="([0-9a-f-]+)"/.exec(page)?.[1]
+    const selectionProof = /name="selection" value="([A-Za-z0-9._-]+)"/.exec(page)?.[1]
     const csrf = /name="csrf" value="([A-Za-z0-9_-]+)"/.exec(page)?.[1]
     expect(accountId).toBeDefined()
+    expect(selectionProof).toBe(firstCookie?.split('=')[1])
     expect(csrf).toBeDefined()
     const rejectedSelection = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
       method: 'POST',
@@ -214,25 +216,34 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
         Origin: 'https://untrusted.example',
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ account: accountId as string, csrf: csrf as string }),
+      body: new URLSearchParams({
+        account: accountId as string,
+        selection: selectionProof as string,
+        csrf: csrf as string,
+      }),
     })
     expect(rejectedSelection.status).toBe(403)
     const rejectedWithoutToken = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
       method: 'POST',
       headers: {
-        Cookie: firstCookie as string,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ account: accountId as string }),
+      body: new URLSearchParams({
+        account: accountId as string,
+        selection: selectionProof as string,
+      }),
     })
     expect(rejectedWithoutToken.status).toBe(403)
     const save = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
       method: 'POST',
       headers: {
-        Cookie: firstCookie as string,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ account: accountId as string, csrf: csrf as string }),
+      body: new URLSearchParams({
+        account: accountId as string,
+        selection: selectionProof as string,
+        csrf: csrf as string,
+      }),
     })
     expect(save.status).toBe(200)
     const db = createDb()
@@ -261,16 +272,18 @@ describe.skipIf(!localDatabaseUrl)('bank consent local integration', () => {
     const renewalPage = await renewalSelection.text()
     expect(renewalPage).toContain('checked')
     const renewalAccountId = /name="account" value="([0-9a-f-]+)"/.exec(renewalPage)?.[1]
+    const renewalProof = /name="selection" value="([A-Za-z0-9._-]+)"/.exec(renewalPage)?.[1]
     const renewalCsrf = /name="csrf" value="([A-Za-z0-9_-]+)"/.exec(renewalPage)?.[1]
     const renewalSave = await originalFetch(`http://127.0.0.1:${port}/banking/select`, {
       method: 'POST',
       headers: {
         Cookie: renewalCookie as string,
-        Origin: `http://127.0.0.1:${port}`,
+        Origin: 'null',
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
         account: renewalAccountId as string,
+        selection: renewalProof as string,
         csrf: renewalCsrf as string,
       }),
     })
