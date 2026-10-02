@@ -6,13 +6,11 @@ import {
   createDb,
   createPersonalSearchToken,
   type Database,
-  decryptPersonalAccountPayload,
   decryptPersonalTransactionPayload,
-  getPersonalAccountDisplayName,
   personalTransactionSearchToken,
   tokenizePersonalSearchText,
 } from '#db'
-
+import { loadSelectedBankAccounts } from './bank-accounts'
 import { decodeCursor, encodeCursor } from './cursor'
 import {
   type PersonalSpendingSummaryInput,
@@ -31,33 +29,33 @@ export class PersonalFinanceService {
   }
 
   async listAccounts() {
-    const accounts = await this.db.query.bankAccount.findMany({
-      where: (table, { and, eq }) =>
-        and(eq(table.workspaceId, this.workspaceId), eq(table.included, true)),
-      orderBy: (table, { asc }) => [asc(table.name)],
-    })
+    const accounts = await loadSelectedBankAccounts(this.db, this.workspaceId, 'personal')
 
     return {
-      accounts: accounts.map((account) => {
-        const payload = account.encryptedPersonalPayload
-          ? decryptPersonalAccountPayload(account.encryptedPersonalPayload)
-          : { name: account.name }
-
-        return {
-          id: account.id,
-          name: getPersonalAccountDisplayName(payload),
-          currency: account.currency,
-          currentBalance: account.currentBalance,
-          availableBalance: account.availableBalance,
-          updatedAt: account.updatedAt.toISOString(),
-        }
-      }),
+      accounts: accounts.map(
+        ({
+          sourceIds: _sourceIds,
+          lastSyncedAt: _lastSyncedAt,
+          connectionStatus: _connectionStatus,
+          ...account
+        }) => account,
+      ),
     }
   }
 
   async searchTransactions(input: SearchPersonalTransactionsInput) {
     const filters = searchPersonalTransactionsInputSchema.parse(input)
-    const accountIds = await this.getIncludedAccountIds(filters.accountId)
+    const accounts = await loadSelectedBankAccounts(this.db, this.workspaceId, 'personal')
+    const selectedAccounts = filters.accountId
+      ? accounts.filter(
+          (account) =>
+            account.id === filters.accountId || account.sourceIds.includes(filters.accountId!),
+        )
+      : accounts
+    const accountIds = selectedAccounts.flatMap((account) => account.sourceIds)
+    const accountBySourceId = new Map(
+      selectedAccounts.flatMap((account) => account.sourceIds.map((id) => [id, account] as const)),
+    )
 
     if (accountIds.length === 0) {
       return { transactions: [], nextCursor: null }
@@ -101,12 +99,12 @@ export class PersonalFinanceService {
     const lastRow = pageRows.at(-1)
 
     return {
-      transactions: pageRows.map(({ transaction, accountName, accountEncryptedPayload }) => {
-        const resolvedAccountName = accountEncryptedPayload
-          ? getPersonalAccountDisplayName(decryptPersonalAccountPayload(accountEncryptedPayload))
-          : accountName
-
-        return serializePersonalTransaction(transaction, resolvedAccountName)
+      transactions: pageRows.map(({ transaction }) => {
+        const account = accountBySourceId.get(transaction.accountId)
+        if (!account) {
+          throw new Error('Account access changed during the request')
+        }
+        return serializePersonalTransaction(transaction, account.name, account.id)
       }),
       nextCursor:
         hasMore && lastRow
@@ -191,17 +189,13 @@ export class PersonalFinanceService {
   }
 
   private async getIncludedAccountIds(accountId?: string) {
-    const rows = await this.db.query.bankAccount.findMany({
-      where: (table, { and, eq }) =>
-        and(
-          eq(table.workspaceId, this.workspaceId),
-          eq(table.included, true),
-          accountId ? eq(table.id, accountId) : undefined,
-        ),
-      columns: { id: true },
-    })
-
-    return rows.map((row) => row.id)
+    const accounts = await loadSelectedBankAccounts(this.db, this.workspaceId, 'personal')
+    return accounts
+      .filter(
+        (account) =>
+          !accountId || account.id === accountId || account.sourceIds.includes(accountId),
+      )
+      .flatMap((account) => account.sourceIds)
   }
 
   private async findMatchingTransactionIds(query?: string) {
@@ -260,6 +254,7 @@ export class PersonalFinanceService {
   }) {
     const conditions: Array<SQL | undefined> = [
       eq(bankTransaction.workspaceId, this.workspaceId),
+      eq(bankTransaction.status, 'booked'),
       inArray(bankTransaction.accountId, accountIds),
       matchingIds ? inArray(bankTransaction.id, matchingIds) : undefined,
       dateFrom ? gte(bankTransaction.bookedAt, startOfUtcDay(dateFrom)) : undefined,
@@ -279,6 +274,7 @@ export class PersonalFinanceService {
 function serializePersonalTransaction(
   transaction: typeof bankTransaction.$inferSelect,
   accountName: string,
+  accountId: string,
 ) {
   if (!transaction.encryptedPersonalPayload) {
     throw new Error('Personal transaction payload is unavailable')
@@ -288,7 +284,7 @@ function serializePersonalTransaction(
 
   return {
     id: transaction.id,
-    accountId: transaction.accountId,
+    accountId,
     accountName,
     bookedAt: transaction.bookedAt.toISOString(),
     amount: transaction.amount,

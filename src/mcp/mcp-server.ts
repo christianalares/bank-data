@@ -26,6 +26,14 @@ import {
   recoverBankSelection,
   startBankConsent,
 } from '../banking/consent-service'
+import {
+  bankAccountsSchema,
+  bankReadInputSchema,
+  bankTotalsSchema,
+  bankTransactionPageSchema,
+  listBankTransactionsInputSchema,
+} from '../finance/bank-schemas'
+import { BankReadService } from '../finance/bank-service'
 
 import { renderAttachmentImage } from './attachment-image'
 
@@ -85,6 +93,7 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
     version: '0.2.0',
   })
   const finance = new FinanceService()
+  registerBankReadTools(server, context)
 
   server.registerTool(
     'get_finance_overview',
@@ -356,6 +365,7 @@ function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mo
     version: '0.3.0',
   })
   const finance = new PersonalFinanceService({ workspaceId: context.workspaceId })
+  registerBankReadTools(server, context)
 
   server.registerTool(
     'list_personal_accounts',
@@ -423,6 +433,89 @@ function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mo
   return server
 }
 
+function registerBankReadTools(
+  server: McpServer,
+  context: Extract<FinanceMcpContext, { mode: 'business' | 'personal' }>,
+) {
+  const bank = new BankReadService(
+    context.mode,
+    context.mode === 'personal' ? context.workspaceId : undefined,
+  )
+  const audit = async (toolName: string, input: Record<string, unknown>, resultCount: number) => {
+    const summary = {
+      hasAccountFilter: typeof input.accountId === 'string',
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      limit: input.limit,
+      hasCursor: typeof input.cursor === 'string',
+    }
+    if (context.mode === 'personal') {
+      await recordPersonalAudit(context, toolName, summary, resultCount)
+    } else {
+      console.info(
+        JSON.stringify({ event: 'bank_mcp_read', toolName, filters: summary, resultCount }),
+      )
+    }
+  }
+
+  server.registerTool(
+    'list_bank_accounts',
+    {
+      title: 'List selected bank accounts',
+      description:
+        'List selected accounts and latest known balances in this authorized workspace. Renewed personal connections are shown as one account. Connection status and last sync time indicate data freshness; stored history may be incomplete.',
+      outputSchema: bankAccountsSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async () =>
+      executeOperation(async () => {
+        const result = await bank.listAccounts()
+        await audit('list_bank_accounts', {}, result.accounts.length)
+        return result
+      }),
+  )
+
+  server.registerTool(
+    'list_bank_transactions',
+    {
+      title: 'List booked bank transactions',
+      description:
+        'Read selected accounts in this authorized workspace by account and inclusive UTC dates. Results are newest first, booked only, with at most 200 rows. Continue with nextCursor while incompletePage is true. Account freshness is reported separately; full bank history is not guaranteed.',
+      inputSchema: listBankTransactionsInputSchema,
+      outputSchema: bankTransactionPageSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await bank.listTransactions(input)
+        await audit('list_bank_transactions', input, result.transactions.length)
+        return result
+      }),
+  )
+
+  server.registerTool(
+    'summarize_bank_transactions',
+    {
+      title: 'Summarize booked bank transactions',
+      description:
+        'Return exact booked transaction counts and credit, debit, and net totals by original currency for selected accounts and inclusive UTC dates. Debits are negative. Freshness and connection status are reported separately.',
+      inputSchema: bankReadInputSchema,
+      outputSchema: bankTotalsSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await bank.getTotals(input)
+        await audit(
+          'summarize_bank_transactions',
+          input,
+          result.totals.reduce((sum, row) => sum + row.transactionCount, 0),
+        )
+        return result
+      }),
+  )
+}
+
 async function recordPersonalAudit(
   context: Extract<FinanceMcpContext, { mode: 'personal' }>,
   toolName: string,
@@ -443,7 +536,7 @@ function summarizePersonalFilters(input: Record<string, unknown>) {
     hasQuery: typeof input.query === 'string' && input.query.length > 0,
     dateFrom: input.dateFrom,
     dateTo: input.dateTo,
-    accountId: input.accountId,
+    hasAccountFilter: typeof input.accountId === 'string',
     currency: input.currency,
     direction: input.direction,
     includeInternalTransfers: input.includeInternalTransfers,
@@ -466,7 +559,7 @@ async function executeOperation<T extends Record<string, unknown>>(operation: ()
       structuredContent: result,
     }
   } catch (error) {
-    console.error(error)
+    console.error('MCP operation failed', error instanceof Error ? error.name : 'Unknown error')
 
     return {
       content: [
