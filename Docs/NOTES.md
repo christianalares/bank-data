@@ -1,6 +1,71 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 02:24 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 02:33 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 08: Executor and Raycast acceptance in progress
+
+The checkout began clean at `ffcef56`, matching
+`origin/codex/bank-mcp-migration`. `bd`, `br`, and `bv` are unavailable on this
+host, so the plan ledger records progress. No application source, bank row,
+Railway resource, database setting, or existing credential was changed.
+
+Executor on the home Mac was reachable through its existing connected MCP
+route. Its live connection inventory had no Hidden Village bank entry. A probe
+of `https://hidden-village-mcp.up.railway.app/mcp` reported bearer
+authentication required and no OAuth requirement. The new Executor catalog
+integration `hidden_village_bank` uses streamable HTTP and an Authorization
+bearer template. Its user-owned `Hidden Village business bank` connection form
+is prepared on the home Mac, but no credential has been entered or connection
+created. The secure handoff URL is
+`http://localhost:4789/integrations/hidden_village_bank?addAccount=1&owner=user&label=Hidden%20Village%20business%20bank`.
+The user was asked through the coordinating chat to enter the existing
+production `MCP_API_TOKEN` from Railway's `mcp` service there, or explicitly
+authorize that precise transfer. Token values were not written to notes or
+sent in chat.
+
+Before connecting the broad business bearer, 11 user-owned Executor block
+policies were installed for the legacy overview, transaction search,
+attachment read, and attachment mutation tools under `hidden_village_bank.*`.
+The intended remaining tools are `list_bank_accounts`,
+`list_bank_transactions`, and `summarize_bank_transactions`. The policies are
+present in a fresh list, but their enforcement cannot be confirmed until a
+connection produces tools. The underlying business MCP token still reaches
+legacy tools outside Executor, so the Executor policies are a client guardrail,
+not a new server-side authorization boundary.
+
+A direct authenticated HTTP client on this Mac read all selected company
+transactions with limit 50: five pages of 50, 50, 50, 50, and 22 rows. All
+222 returned IDs were unique, the final page reported completion, and the
+sum of the bank totals counts was also 222. Four selected company accounts
+were returned. This verifies the live service's cursor traversal, not the
+Executor connection or its policy enforcement. No transaction content,
+account IDs, balances, token values, or cursor values were printed.
+
+Raycast on this Mac already has `Personal Finance`, `Executor`, and an older
+direct `Hidden Village` MCP entry. Starting `Personal Finance` refreshed its
+tool list to include all three new bank reads. In Raycast AI Chat, actual
+authenticated `List selected bank accounts` returned three selected accounts,
+all connected. An actual `List booked bank transactions` call with limit 2
+returned two rows, `incompletePage=true`, and a continuation cursor. The
+chat was instructed to report counts only, though an earlier automatically
+generated response also displayed balances in the local Raycast UI. Do not
+repeat those values in task output. The `Executor` Raycast entry starts and
+shows its seven current tools, but the bank path through it remains untested
+until the new Executor connection is saved.
+
+The older direct `Hidden Village` Raycast entry is configured for the same
+production MCP URL with no HTTP header in its editor. Starting it failed with
+`Dynamic Client Registration rejected (HTTP 404)`, consistent with Raycast
+attempting OAuth against the bearer-only MCP service. Its displayed tool list
+is stale and lacks the Task 07 bank reads. No Raycast server configuration was
+changed. Keep that entry until the Executor bank route has passed an actual
+call, then decide whether to retire it rather than add another broad bearer
+credential to Raycast. The working personal entry should also remain in place.
+
+Task 08 still needs a real user-owned Executor connection, a denied legacy
+tool call showing policy enforcement, authenticated bank reads from Executor,
+complete cursor traversal there, and a Raycast `@executor` bank call on the
+intended device. The iPhone Raycast path has not been observed.
 
 ## Task 07: selected account read tools and stable renewal identity
 
