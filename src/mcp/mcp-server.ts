@@ -21,7 +21,11 @@ import {
   transactionPageSchema,
 } from '#finance'
 import { createStorageClient } from '#storage'
-import { getBankConsentStatus, startBankConsent } from '../banking/consent-service'
+import {
+  getBankConsentStatus,
+  recoverBankSelection,
+  startBankConsent,
+} from '../banking/consent-service'
 
 import { renderAttachmentImage } from './attachment-image'
 
@@ -308,6 +312,35 @@ function createBankConsentMcpServer() {
       } catch {
         return {
           content: [{ type: 'text' as const, text: 'Bank consent status is unavailable.' }],
+          isError: true,
+        }
+      }
+    },
+  )
+
+  server.registerTool(
+    'recover_bank_selection',
+    {
+      title: 'Recover bank account selection',
+      description:
+        'Get a short-lived selection link for the latest completed personal bank renewal when its browser cookie was lost. Open the URL in one browser and finish account selection.',
+      inputSchema: {
+        aspspName: z.string().trim().min(1).max(150),
+        aspspCountry: z.string().length(2).default('SE'),
+      },
+      outputSchema: z.object({ url: z.string().url() }),
+      annotations: { ...mutationAnnotations, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        const result = await recoverBankSelection(input)
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        }
+      } catch {
+        return {
+          content: [{ type: 'text' as const, text: 'Bank selection recovery is unavailable.' }],
           isError: true,
         }
       }

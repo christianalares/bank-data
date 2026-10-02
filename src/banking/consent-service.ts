@@ -415,6 +415,53 @@ export async function getBankSelection(connectionId: string) {
   }))
 }
 
+export async function recoverBankSelection(input: { aspspName: string; aspspCountry: string }) {
+  const workspaceId = getWorkspaceId('personal')
+  const db = createDb()
+  const latest = await db.query.bankConnection.findFirst({
+    where: (table, { and, eq }) =>
+      and(
+        eq(table.workspaceId, workspaceId),
+        eq(table.provider, 'enable_banking'),
+        eq(table.status, 'pending'),
+      ),
+    orderBy: (table) => [desc(table.createdAt)],
+  })
+  const metadata = latest?.rawMetadata as ConsentMetadata | null
+  if (
+    !latest ||
+    metadata?.flow !== 'mcp-consent' ||
+    metadata.workspaceKind !== 'personal' ||
+    metadata.aspsp.name !== input.aspspName.trim() ||
+    metadata.aspsp.country !== input.aspspCountry.trim().toUpperCase() ||
+    !metadata.renewConnectionId ||
+    !latest.encryptedPersonalPayload ||
+    Date.now() - latest.updatedAt.getTime() > SELECTION_LIFETIME_MS
+  ) {
+    throw new Error('No recent completed personal renewal is available for selection')
+  }
+  const previous = await db.query.bankConnection.findFirst({
+    where: (table, { and, eq }) =>
+      and(
+        eq(table.id, metadata.renewConnectionId as string),
+        eq(table.workspaceId, workspaceId),
+        eq(table.status, 'connected'),
+      ),
+    columns: { id: true },
+  })
+  const accounts = await db.query.bankAccount.findMany({
+    where: (table, { eq }) => eq(table.connectionId, latest.id),
+    columns: { id: true },
+    limit: 1,
+  })
+  if (!previous || accounts.length === 0) {
+    throw new Error('Completed personal renewal is not ready for selection')
+  }
+  const url = new URL('/banking/select', getConsentRedirectUrl())
+  url.searchParams.set('proof', makeSelectionCookie(latest.id))
+  return { url: url.toString() }
+}
+
 export async function activateBankConsent(connectionId: string, selectedAccountIds: string[]) {
   const db = createDb()
   const connection = await db.query.bankConnection.findFirst({

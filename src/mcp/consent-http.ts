@@ -61,7 +61,7 @@ export async function handleBankConsentHttp(
   }
 
   if (url.pathname === '/banking/select' && request.method === 'GET') {
-    const selectionCookie = getCookie(request, COOKIE_NAME)
+    const selectionCookie = url.searchParams.get('proof') ?? getCookie(request, COOKIE_NAME)
     const connectionId = readSelectionCookie(selectionCookie)
     if (!connectionId) {
       sendHtml(response, 403, '<h1>Account selection expired</h1>')
