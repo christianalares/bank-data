@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 02:18 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 02:24 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 07: selected account read tools and stable renewal identity
 
@@ -76,6 +76,41 @@ more stored booked rows match the query, not that provider history is complete.
 Connection freshness exposes a stale or disconnected source but cannot prove
 that all provider transactions were imported. Task 09 owns the unattended
 cron and provider comparison.
+
+### Live publication and bounded MCP read
+
+The host's GitHub HTTPS push failed because its keychain credential could not
+be read, and `gh` had an invalid local token. The connected GitHub API
+published commit `5beecc0` on the branch as a fast-forward from `f52c38f`.
+Its tree hash `13546a5` exactly matched the tested local commit `6529dd4`.
+The checkout was aligned to the remote commit and clean. Railway reported
+`SUCCESS` deployments of `mcp` and `bank-sync` from `5beecc0`; the existing
+Postgres service remained `SUCCESS`. This was a source redeployment, not an
+infrastructure apply or database migration.
+
+An authenticated live business MCP call returned four selected company
+accounts. A one-row booked transaction page had a continuation cursor and
+`incompletePage=true`; the per-account freshness array covered all four.
+Booked totals across the selected company accounts counted 222 stored rows.
+Per-account totals confirmed that one selected disconnected account still
+exposes 128 historical booked rows. Nine structured `bank_mcp_read` audit
+events for account, page, and total tools were present in Railway deploy logs
+without account-identifier fields. No account names, IDs, IBANs, transaction
+content, token values, or connection strings were printed in the verification
+output.
+
+The live freshness read showed the active company connection in `error`,
+while a read-only Postgres query showed two personal connections in
+`connected`. The company error was last updated at 02:04:07 UTC with the
+ASPSP rate-limit category, before the Task 07 deployment began at 02:20 UTC.
+This corrects the earlier Task 06 note that described the limited connection
+as personal. The current error is provider-side freshness evidence, not a
+failure of the new read tools. Task 09 still owns confirming the next
+unattended bank-sync run and recovery after the six-hour backoff. A live
+personal bearer token was not available for this task, so personal tool
+authorization and grouped history were verified against the restored database
+with an actual authenticated HTTP MCP client; Task 08 must verify the live
+personal path from the intended device.
 
 ## Task 06: Railway bank sync deployed with a provider-limited first run
 
@@ -162,7 +197,7 @@ checksum still matched before the apply and manual run.
 At 02:00 UTC on 2026-10-02, Railway advanced `nextCronRunAt` to 2026-10-03
 02:00 UTC, but no container start was logged on the original deployment. A
 from-source redeploy at 02:02 UTC started a Railway container at 02:03:41.
-It exited nonzero at 02:04:11 because the other personal connection received
+It exited nonzero at 02:04:11 because the business connection received
 `ASPSP_RATE_LIMIT_EXCEEDED` (HTTP 429). This proves container startup and
 the production entry point, but not a successful unattended cron import.
 Read-only production checks after the run found 2,776 booked rows and 2,776
