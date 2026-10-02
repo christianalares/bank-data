@@ -3,6 +3,10 @@
 MCP server for searching transactions, viewing invoice attachments through short-lived signed
 links, and managing transaction matches without exposing raw document bytes.
 
+The hosted endpoint is `https://bank-data-mcp.up.railway.app/mcp`. The former
+`hidden-village-mcp.up.railway.app` hostname remains an alias during client and
+bank consent redirect migration.
+
 ## Configuration
 
 Both transports require:

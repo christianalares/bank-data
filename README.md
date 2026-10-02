@@ -18,10 +18,10 @@ remain during migration.
 `Bank Data` names the project and MCP server. `Hidden Village` still names the
 business workspace and the existing Enable Banking application. The legacy web
 service, external search worker, stored personal token prefix, local Postgres
-credentials, and public Railway domains retain their current identifiers while
-their consumers are migrated or the resources are retired. The old MCP domain
-must remain reachable until Executor, other clients, and the bank consent
-redirect configuration use its replacement.
+credentials, and some public Railway domains retain their current identifiers
+while their consumers are migrated or the resources are retired. The MCP endpoint
+is `https://bank-data-mcp.up.railway.app/mcp`. Its old domain remains reachable
+until older clients and the bank consent redirect configuration use the new URL.
 
 ## Local Development
 
