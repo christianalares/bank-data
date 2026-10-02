@@ -1,6 +1,86 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 05:25 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 05:32 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 09: bounded bank comparison and unattended gates
+
+The checkout began clean at `bcefc73` and matched the freshly fetched remote
+branch. `bd`, `br`, and `bv` are unavailable on this host, so the plan ledger
+records Task 09 as in progress. Fresh Railway status still lists the existing
+Postgres service `404f6fb9-da37-403f-b1f3-e8d6e2c54d60`, MCP, web, and
+`bank-sync`. Postgres remained on its existing successful deployment. The
+latest MCP and bank-sync deployments reported `SUCCESS` from `bcefc73`.
+The bank-sync configuration remains `0 2 * * *` in UTC with restart policy
+`NEVER`, and Railway reports `nextCronRunAt=2026-10-03T02:00:00Z`. Its newest
+deployment has no execution logs as of 05:32 UTC on October 2. This verifies
+configuration and schedule state, not the next container start or a successful
+unattended import. No provider fetch was forced during the ASPSP limit window.
+
+The retained pre-Task-06 dump remains mode `0600`, 3,935,929 bytes, and its
+SHA-256 still matches the recorded
+`4a25a4753bc1639cd50205c2da0422247c6b458a94485d194092a79bd2dee28c`.
+It restored without error into a new disposable PostgreSQL 18 container. The
+restored snapshot has 2,769 booked transaction rows, 2,769 distinct row IDs,
+2,769 distinct internal IDs, zero pending transaction rows, and 15 Drizzle
+migrations. Read-only production SQL now has 2,776 booked rows, 2,776 distinct
+row and internal IDs, and zero pending rows. The seven-row delta is on the
+renewed personal source account. The disposable restore was never pointed at
+Railway Postgres.
+
+For the company comparison, four selected account rows were sorted by their
+internal IDs and labeled 1 through 4 only for this check. The windows were
+inclusive UTC dates 2026-02-01 through 2026-08-31 (W1) and 2026-09-01 through
+2026-10-01 (W2). The restored snapshot and current production SQL independently
+grouped booked rows by account and original currency, with exact two-decimal
+credits, negative debits, and net. The authenticated Executor connection then
+called `summarize_bank_transactions` and `list_bank_transactions` for each
+account and window. Each transaction page used limit 200, contained every
+matching row, had unique IDs, and ended without a continuation cursor. The
+page amounts independently summed to the SQL and Executor summary amounts.
+Exact amount values and account IDs were compared in memory and were not
+written to this document.
+
+| Account label | W1 SEK rows | W2 SEK rows | Snapshot, live SQL, Executor totals, and Executor pages |
+| --- | ---: | ---: | --- |
+| 1 | 71 | 23 | Counts, credits, debits, and net match exactly |
+| 2 | 0 | 0 | Empty totals and pages match |
+| 3 | 128 | 0 | Counts, credits, debits, and net match exactly |
+| 4 | 0 | 0 | Empty totals and pages match |
+
+All 222 selected company booked rows fall in those two windows. Every window
+had one currency, SEK. The two account rows marked `error` are on the same
+company connection, whose last successful sync was 2026-10-02 01:01 UTC and
+whose last error update was 02:04 UTC. The classified error is the bank's
+`ASPSP_RATE_LIMIT_EXCEEDED`. The two `disconnected` account rows share a
+different connection, last synced in August; one retains 128 booked historical
+rows. Four account statuses therefore represent two connection statuses, not
+four independent authorization failures. Neither state was changed.
+
+For personal source rows, the same restored snapshot and production database
+were compared over 2026-09-01 through 2026-09-30 and 2026-10-01 through
+2026-10-02. Three existing selected source accounts had unchanged SEK counts
+and exact credit, debit, and net totals in both windows. The renewed source
+account had zero rows in the snapshot and seven in production: four in
+September and three in October. A fresh production read confirms the renewed
+connection is `connected` with one selected account and a future consent end,
+while its intended predecessor is `disconnected` and still holds 1,950
+included booked rows. The other personal connection remains `connected`.
+The real provider callback and account-selection save were already verified
+in Task 05; this check confirms their persisted outcome, not a second bank
+authorization.
+
+The Executor connection passed the bounded reads above during an attended
+session. No matching scheduled automation was found locally, and Executor's
+available bank integration exposes read tools but no scheduler. The first
+unattended Executor workflow has therefore not run. A scheduled continuation
+after the October 3 cron should use this same user-owned Executor connection
+to read account freshness and bounded totals, compare the 222-row baseline
+and unique IDs, and report only status, counts, currencies, and equality of
+amount aggregates. It must distinguish stored-history reads from fresh bank
+sync. Task 09 remains in progress until both that unattended read and the
+Railway cron run are actually observed, including recovery of the limited
+connection to `connected` or a documented provider failure. Do not manually
+retry that provider connection merely to satisfy the check.
 
 ## Task 08: Executor and Raycast bank read acceptance
 
