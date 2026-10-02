@@ -1,6 +1,67 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 10:30 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 15:18 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 09: SEB rate-limit investigation on October 2
+
+Railway production has one `bank-sync` service with a daily `0 2 * * *` UTC
+schedule and a `pnpm start:sync` entry point. Its deploy log shows a container
+start at 02:03:41 UTC, followed by an Enable Banking 429 with
+`ASPSP_RATE_LIMIT_EXCEEDED` for the active business connection at 02:04:11 UTC.
+The overall process exited 1. The later documented user-requested run inside
+the MCP container at 10:13 UTC again received 429. A 15:18 UTC read-only
+production query found that connection still in `error`, last successful sync
+at 01:01:29 UTC, error update at 10:13:31 UTC, and consent valid until
+2026-11-22 07:53 UTC. Its two included accounts retain 94 booked rows; the
+historical disconnected SEB source retains another 128. No provider request
+was made during this investigation. The initial incident report's 08:13 UTC
+snapshot has been superseded by the later database update; Railway's
+`bank-sync` logs do not show a run at 08:13 UTC.
+
+The current Railway path uses two locally stored accounts, so it does not need
+`GET /sessions/{id}` for this connection. For each account it requests
+`GET /accounts/{id}/balances` and
+`GET /accounts/{id}/transactions?date_from=2026-09-18&strategy=default&transaction_status=BOOK`.
+The transaction API can add continuation pages. A full two-account run needs
+at least four account-data requests, plus any continuation pages;
+the local archive holds only 12 booked rows in this overlap window, but the
+provider's page boundaries are unknown. The old code started balances and
+transactions concurrently for each account. A 429 in one request could leave
+the other running. Railway's application log records the provider error and
+connection, not the failing endpoint or request count, so it cannot prove
+which endpoint received the historical 429. It also cannot prove whether an
+external client consumed the bank's quota.
+
+`src/jobs/tasks/sync-banking.ts` is a second possible path: its daily Trigger
+schedule is recorded as inactive in Task 06, while the old web manual sync and
+personal account-inclusion actions can still trigger it. Unlike the Railway
+path, it has no six-hour guard and requests account details, balances, and
+transactions concurrently; Trigger has up to three task attempts configured.
+No Trigger execution was evidenced in the Railway logs, and its remote run
+history was not available here. Keep its schedule inactive and avoid manual
+Trigger or Railway syncs while the SEB limit is active. The current Railway
+path has no cross-process lock, so an overlapping explicit Trigger/manual run
+remains a risk.
+
+Enable Banking's FAQ attributes this error to the ASPSP's background-fetch
+limit and recommends retrying after six hours. The repeated 429 after a
+six-hour wait means this is not proven to be a one-off window. Valid consent
+and HTTP 429 give no basis for reauthorization. The Railway source now treats
+every HTTP 429 as non-retryable within the run and defers a background retry
+for six hours from the recorded error. The Railway path now fetches balances before
+transactions, stopping before the second request when balances gets 429. A
+successful complete connection sync writes `connected`, clears `errorMessage`,
+and advances `lastSyncedAt`; this is code-verified, not yet live-verified for
+SEB. The next scheduled run remains 2026-10-03 02:00 UTC. Task 09 stays open
+until that unattended run, the active SEB connection's recovery, and an MCP
+freshness read are observed. If 429 persists after that run, obtain request
+counts and quota details from Enable Banking/SEB before another attempt.
+
+Validation of this source change: `pnpm test` passed 35 tests with one skipped,
+`pnpm typecheck`, `pnpm check`, and `pnpm build:server` passed. The bank-sync
+tests cover both provider-coded and generic HTTP 429, one attempt per 429,
+and the exact six-hour deferral boundary. No live bank call was part of these
+checks.
 
 ## Task 14: preserve history while preparing stale-connection cleanup
 

@@ -118,8 +118,23 @@ describe('bank background-fetch limits', () => {
 
     expect(shouldDeferBackgroundSync(connected, soonAfter)).toBe(true)
     expect(shouldDeferBackgroundSync(rateLimited, soonAfter)).toBe(true)
+    expect(
+      shouldDeferBackgroundSync(
+        rateLimited,
+        new Date(lastFetchAt.getTime() + 6 * 60 * 60 * 1000 - 1),
+      ),
+    ).toBe(true)
+    expect(
+      shouldDeferBackgroundSync(rateLimited, new Date(lastFetchAt.getTime() + 6 * 60 * 60 * 1000)),
+    ).toBe(false)
     expect(shouldDeferBackgroundSync(connected, nextDay)).toBe(false)
     expect(shouldDeferBackgroundSync(rateLimited, nextDay)).toBe(false)
+    expect(
+      shouldDeferBackgroundSync(
+        { ...rateLimited, errorMessage: 'Enable Banking request failed (429): Too many requests' },
+        soonAfter,
+      ),
+    ).toBe(true)
     expect(
       shouldDeferBackgroundSync(
         { ...rateLimited, errorMessage: 'Enable Banking request failed (500)' },
@@ -128,14 +143,17 @@ describe('bank background-fetch limits', () => {
     ).toBe(false)
   })
 
-  it('does not immediately retry a bank-side rate limit', async () => {
+  it.each([
+    'Enable Banking request failed (429): ASPSP_RATE_LIMIT_EXCEEDED',
+    'Enable Banking request failed (429): Too many requests',
+  ])('does not immediately retry a bank-side rate limit: %s', async (message) => {
     let calls = 0
     await expect(
       retryProvider(async () => {
         calls += 1
-        throw new Error('Enable Banking request failed (429): ASPSP_RATE_LIMIT_EXCEEDED')
+        throw new Error(message)
       }),
-    ).rejects.toThrow('ASPSP_RATE_LIMIT_EXCEEDED')
+    ).rejects.toThrow(message)
     expect(calls).toBe(1)
   })
 })

@@ -32,6 +32,10 @@ const PROVIDER_ATTEMPTS = 3
 const BACKGROUND_FETCH_INTERVAL_MS = 6 * 60 * 60 * 1000
 const ASPSP_RATE_LIMIT_ERROR = 'ASPSP_RATE_LIMIT_EXCEEDED'
 
+function isRateLimitFailure(message: string) {
+  return message.includes('(429)') || message.includes(ASPSP_RATE_LIMIT_ERROR)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,17 +281,17 @@ async function syncEnableBankingConnection({
       continue
     }
 
-    const [balances, transactions] = await Promise.all([
-      retryProvider(() => getEnableBankingAccountBalances(accountUid)),
-      retryProvider(() =>
-        getEnableBankingTransactions(accountUid, {
-          dateFrom: historyDays
-            ? new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-            : getDateFrom(connection.lastSyncedAt, overlapDays),
-          strategy: historyDays ? 'longest' : 'default',
-        }),
-      ),
-    ])
+    // Stop before starting the next fetch if the bank limits this account.
+    // Parallel requests leave one request in flight after the other gets 429.
+    const balances = await retryProvider(() => getEnableBankingAccountBalances(accountUid))
+    const transactions = await retryProvider(() =>
+      getEnableBankingTransactions(accountUid, {
+        dateFrom: historyDays
+          ? new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+          : getDateFrom(connection.lastSyncedAt, overlapDays),
+        strategy: historyDays ? 'longest' : 'default',
+      }),
+    )
 
     const accountDetails = enableBankingAccount
     const balance = pickEnableBankingBalance(balances)
@@ -620,7 +624,9 @@ export function shouldDeferBackgroundSync(
   const lastFetchAt =
     connection.status === 'connected'
       ? connection.lastSyncedAt
-      : connection.status === 'error' && connection.errorMessage?.includes(ASPSP_RATE_LIMIT_ERROR)
+      : connection.status === 'error' &&
+          connection.errorMessage &&
+          isRateLimitFailure(connection.errorMessage)
         ? connection.updatedAt
         : null
 
@@ -639,14 +645,12 @@ export async function retryProvider<T>(operation: () => Promise<T>): Promise<T> 
       // retry. Enable Banking recommends waiting six hours for this error.
       if (
         isConsentFailure(message) ||
-        message.includes(ASPSP_RATE_LIMIT_ERROR) ||
+        isRateLimitFailure(message) ||
         attempt >= PROVIDER_ATTEMPTS
       ) {
         throw error
       }
-      const delayMs = message.includes('(429)')
-        ? 5_000 * 3 ** (attempt - 1)
-        : 250 * 2 ** (attempt - 1)
+      const delayMs = 250 * 2 ** (attempt - 1)
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
   }
