@@ -42,11 +42,21 @@ describe('selected bank account identity', () => {
     const rows = [
       {
         account: account(newId, '2026-10-02T00:00:00.000Z', 'renewed', null),
-        connection: { status: 'connected', lastSyncedAt: new Date('2026-10-02T01:00:00.000Z') },
+        connection: {
+          name: 'Enable Banking Nordea',
+          rawMetadata: { aspsp: { name: 'Nordea' } },
+          status: 'connected',
+          lastSyncedAt: new Date('2026-10-02T01:00:00.000Z'),
+        },
       },
       {
         account: account(oldId, '2025-01-01T00:00:00.000Z', 'original', 'My account'),
-        connection: { status: 'disconnected', lastSyncedAt: new Date('2026-09-30T01:00:00.000Z') },
+        connection: {
+          name: 'Enable Banking Nordea',
+          rawMetadata: { aspsp: { name: 'Nordea' } },
+          status: 'disconnected',
+          lastSyncedAt: new Date('2026-09-30T01:00:00.000Z'),
+        },
       },
     ]
 
@@ -56,6 +66,7 @@ describe('selected bank account identity', () => {
     expect(result[0]).toMatchObject({
       id: oldId,
       sourceIds: [newId, oldId],
+      bankName: 'Nordea',
       name: 'My account',
       currentBalance: '200.00',
       connectionStatus: 'connected',
@@ -72,7 +83,12 @@ describe('selected bank account identity', () => {
           'same',
           null,
         ),
-        connection: { status: 'connected', lastSyncedAt: null },
+        connection: {
+          name: 'Enable Banking SEB',
+          rawMetadata: null,
+          status: 'connected',
+          lastSyncedAt: null,
+        },
       },
       {
         account: account(
@@ -81,7 +97,12 @@ describe('selected bank account identity', () => {
           'same',
           null,
         ),
-        connection: { status: 'connected', lastSyncedAt: null },
+        connection: {
+          name: 'Enable Banking SEB',
+          rawMetadata: null,
+          status: 'connected',
+          lastSyncedAt: null,
+        },
       },
     ]
 

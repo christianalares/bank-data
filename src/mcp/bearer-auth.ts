@@ -14,6 +14,20 @@ export function getRequiredApiToken() {
   return token
 }
 
+export function getAllBanksToken(businessToken: string) {
+  const token = process.env.MCP_ALL_BANKS_TOKEN?.trim()
+  if (!token) {
+    return null
+  }
+  if (token.length < 32) {
+    throw new Error('MCP_ALL_BANKS_TOKEN must contain at least 32 characters')
+  }
+  if (token === businessToken || token === process.env.BANK_CONSENT_MCP_TOKEN?.trim()) {
+    throw new Error('MCP_ALL_BANKS_TOKEN must be distinct from other MCP tokens')
+  }
+  return token
+}
+
 export function hasValidBearerToken(header: string | string[] | undefined, expectedToken: string) {
   const token = getBearerToken(header)
   if (!token) {

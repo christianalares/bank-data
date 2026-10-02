@@ -12,6 +12,7 @@ export type BankWorkspaceKind = 'personal' | 'business'
 export type SelectedBankAccount = {
   id: string
   sourceIds: string[]
+  bankName: string
   name: string
   currency: string
   currentBalance: string | null
@@ -61,6 +62,7 @@ export async function loadSelectedBankAccounts(
         )
       })
       const primary = group[0]
+      const bankName = getBankName(primary.connection)
       const payloads =
         kind === 'personal'
           ? group.map(({ account }) =>
@@ -78,6 +80,7 @@ export async function loadSelectedBankAccounts(
       return {
         id: canonical.account.id,
         sourceIds: group.map(({ account }) => account.id),
+        bankName,
         name,
         currency: primary.account.currency,
         currentBalance: primary.account.currentBalance,
@@ -88,4 +91,14 @@ export async function loadSelectedBankAccounts(
       }
     })
     .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+}
+
+function getBankName(connection: { name: string; rawMetadata: unknown }) {
+  const metadata = connection.rawMetadata as { aspsp?: { name?: unknown } } | null
+  const aspspName = metadata?.aspsp?.name
+  if (typeof aspspName === 'string' && aspspName.trim()) {
+    return aspspName.trim()
+  }
+
+  return connection.name.replace(/^Enable Banking /, '').trim()
 }

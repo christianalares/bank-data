@@ -26,7 +26,9 @@ export class BankReadService {
   async listAccounts() {
     const { accounts } = await this.getAccounts()
     return {
-      accounts: accounts.map(({ sourceIds: _sourceIds, ...account }) => account),
+      accounts: accounts.map(
+        ({ sourceIds: _sourceIds, bankName: _bankName, ...account }) => account,
+      ),
       asOf: new Date().toISOString(),
     }
   }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  getAllBanksToken,
   getBearerToken,
   getRequiredApiToken,
   hashPersonalMcpToken,
@@ -9,8 +10,14 @@ import {
 
 const VALID_TOKEN = '0123456789abcdef0123456789abcdef'
 const originalToken = process.env.MCP_API_TOKEN
+const originalAllBanksToken = process.env.MCP_ALL_BANKS_TOKEN
 
 afterEach(() => {
+  if (originalAllBanksToken === undefined) {
+    delete process.env.MCP_ALL_BANKS_TOKEN
+  } else {
+    process.env.MCP_ALL_BANKS_TOKEN = originalAllBanksToken
+  }
   if (originalToken === undefined) {
     delete process.env.MCP_API_TOKEN
     return
@@ -34,6 +41,16 @@ describe('bearer authentication', () => {
     process.env.MCP_API_TOKEN = 'too-short'
 
     expect(() => getRequiredApiToken()).toThrow('at least 32 characters')
+  })
+
+  it('requires a distinct all-bank token when configured', () => {
+    expect(getAllBanksToken(VALID_TOKEN)).toBeNull()
+    process.env.MCP_ALL_BANKS_TOKEN = 'too-short'
+    expect(() => getAllBanksToken(VALID_TOKEN)).toThrow('at least 32 characters')
+    process.env.MCP_ALL_BANKS_TOKEN = VALID_TOKEN
+    expect(() => getAllBanksToken(VALID_TOKEN)).toThrow('distinct')
+    process.env.MCP_ALL_BANKS_TOKEN = 'abcdef0123456789abcdef0123456789'
+    expect(getAllBanksToken(VALID_TOKEN)).toBe(process.env.MCP_ALL_BANKS_TOKEN)
   })
 
   it('extracts and hashes personal bearer tokens without retaining plaintext', () => {

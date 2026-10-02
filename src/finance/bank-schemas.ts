@@ -70,5 +70,54 @@ export const bankTotalsSchema = z.object({
   accountFreshness: bankTransactionPageSchema.shape.accountFreshness,
 })
 
+const categorizedBankAccountSchema = bankAccountSchema.extend({
+  bankName: z.string(),
+  workspaceKind: z.enum(['personal', 'business']),
+})
+
+export const allBankAccountsSchema = z.object({
+  accounts: z.array(categorizedBankAccountSchema),
+  asOf: z.string().datetime(),
+})
+
+export const allBankReadInputSchema = bankReadInputSchema.safeExtend({
+  bankName: z.string().min(1).max(200).optional(),
+})
+
+export const listAllBankTransactionsInputSchema = listBankTransactionsInputSchema.safeExtend({
+  bankName: allBankReadInputSchema.shape.bankName,
+})
+
+export const allBankTransactionPageSchema = bankTransactionPageSchema.extend({
+  transactions: z.array(
+    bankTransactionPageSchema.shape.transactions.element.extend({
+      bankName: z.string(),
+      workspaceKind: z.enum(['personal', 'business']),
+    }),
+  ),
+  accountFreshness: z.array(
+    categorizedBankAccountSchema.pick({
+      id: true,
+      bankName: true,
+      workspaceKind: true,
+      lastSyncedAt: true,
+      connectionStatus: true,
+    }),
+  ),
+})
+
+export const allBankTotalsSchema = z.object({
+  totals: z.array(
+    bankTotalsSchema.shape.totals.element.extend({
+      bankName: z.string(),
+      workspaceKind: z.enum(['personal', 'business']),
+    }),
+  ),
+  asOf: z.string().datetime(),
+  accountFreshness: allBankTransactionPageSchema.shape.accountFreshness,
+})
+
 export type BankReadInput = z.input<typeof bankReadInputSchema>
 export type ListBankTransactionsInput = z.input<typeof listBankTransactionsInputSchema>
+export type ListAllBankTransactionsInput = z.input<typeof listAllBankTransactionsInputSchema>
+export type AllBankReadInput = z.input<typeof allBankReadInputSchema>
