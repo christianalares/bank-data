@@ -1,8 +1,45 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 01:04 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-02 01:09 UTC. Branch: `codex/bank-mcp-migration`.
 
-## Task 05: consent service prepared, live verification blocked
+## Task 05: live consent and renewal verified
+
+### Final live outcome
+
+The user opened the restricted recovery link on the phone, selected one
+personal account, and saw `Bank connected. Your account selection was saved.`
+Railway HTTP logs show selection GET 200 and POST 200 at 01:07:16 UTC on
+2026-10-02. A read-only production query confirms the new personal connection
+is `connected`, its provider session and encrypted payload are stored, its
+consent is current, and `selectionCompleteAt` is recorded. Exactly one
+discovered account is included. The intended previous connection is
+`disconnected`; the other personal connection remains connected. The
+restricted `get_bank_consent_status` MCP call returned HTTP 200 without an
+error. The MCP health endpoint returned 200, and a fresh Railway plan reported
+no changes across the five imported resources. The production dump still
+matches its recorded SHA-256 checksum. No Postgres schema, web, bucket,
+volume, provider application setting, or Raycast change was made in this
+final verification.
+
+A live Enable Banking GET for the stored session returned one account. The
+selected provider account's details and balances were readable, and a
+read-only seven-day booked transaction fetch returned 19 rows. The new local
+account has zero transaction rows because Task 06 has not run the new sync.
+The local personal finance read path returned one transaction on a one-row
+page with another page available, so historical reads still work. This is
+consent and provider-read acceptance, not a completed sync or cutover.
+
+The renewed provider account UID differs from the previous UID, although
+their encrypted IBANs, names, and currencies match. The old account still
+holds 1,950 booked transactions and remains included to preserve historical
+reads. The new account is also included, so the current personal account
+list exposes both rows for the same real account. The old name override was
+not carried to the new row. No new local transactions were inserted or
+deleted, so there is no new transaction duplication yet. Do not remove the
+old account or mark it excluded before Task 06 and Task 07 reconcile stable
+account identity, history, and display settings. Three abandoned pending
+consent attempts remain from the earlier failed browser flows; they were not
+cleaned up during this verification. Task 06 should handle their safe expiry.
 
 ### Redirect registration and resumed live check
 
@@ -55,12 +92,11 @@ The user requested a fresh link when the first selection session was lost.
 A new personal Nordea renewal was initiated through the restricted MCP tool
 without changing the old connected rows. The callback again returned 303 and
 the selection GET 200 at 00:49:27 UTC, but the phone selection POST returned
-403 at 00:49:36 UTC. The earlier guard fix therefore has not solved the live
-phone issue. A follow-up patch records only guard booleans and a phase label
+403 at 00:49:36 UTC. The earlier guard fix therefore had not solved the live
+phone issue. A follow-up patch recorded only guard booleans and a phase label
 on rejected POSTs, without IDs, cookies, request bodies, headers, or account
-details. The user should retain the current phone session while this diagnosis
-is deployed; do not ask for another BankID flow yet. Task 05 remains blocked
-until the guard cause is identified and the live save and renewal are confirmed.
+details. At that point the user retained the phone session while diagnostics
+were deployed, and Task 05 remained blocked pending a live save and renewal.
 
 The user's screenshots confirm the 403 was in the original iOS in-app browser.
 Opening `/banking/select` separately in Vivaldi showed `Account selection
@@ -76,8 +112,8 @@ is accepted only with valid signed form credentials. The proof remains in the
 form body, with `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, and
 a restrictive content security policy. Local integration passed for a
 cookie-less POST, a missing form token, a foreign origin, and an opaque origin.
-This mobile flow fix still needs production deployment and the user's live
-selection before Task 05 can be marked done.
+At that point, this mobile flow fix still needed production deployment and
+the user's live selection.
 
 The mobile form fix deployed as MCP commit `6f87080` and live GET returned
 the signed form proof, CSRF field, and one account checkbox; a deliberate
@@ -94,7 +130,7 @@ be compared directly. The user's Vivaldi session may still hold the selection
 cookie from the successful 303. The same browser can try `/banking/select`
 without repeating BankID; another browser cannot use that cookie.
 
-The callback is being made idempotent for future flows. The start operation
+The callback was then made idempotent for future flows. The start operation
 stores HMAC hashes of the authorization state, and successful completion adds
 an HMAC hash of the one-time callback code. A repeated callback with the same
 state and code can then return the already completed result without exchanging
@@ -123,7 +159,7 @@ browser rejection from navigation timing or a later cookie loss. Do not infer
 that the session failed: the database and provider still show one completed
 pending consent and one account.
 
-A restricted `recover_bank_selection` MCP operation is being added for this
+A restricted `recover_bank_selection` MCP operation was added for this
 case. It accepts a bank name and country, then checks that the latest personal
 pending consent is a recent completed renewal for that bank, that its prior
 connection remains active, and that an account was discovered. It returns a
@@ -134,7 +170,8 @@ The page has no external resources and retains `Cache-Control: no-store`,
 `Referrer-Policy: no-referrer`, and its restrictive content security policy.
 Local integration verified a cookie-less recovery GET and POST. The recovery
 URL is a temporary bearer capability; do not paste it into logs or docs.
-Task 05 remains blocked until deployment and a live account selection save.
+That step remained blocked until deployment and a live account selection save,
+both of which are verified in the final outcome above.
 
 The checkout was clean and
 matched `origin/codex/bank-mcp-migration` at `491b3ea` on resumption. The
