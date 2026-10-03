@@ -1,6 +1,6 @@
 # Migration notes and handoff
 
-Updated: 2026-10-03 09:52 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-03 09:55 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## Task 14: isolated deletion rehearsal and production gate
 
@@ -43,8 +43,41 @@ desired graphs both include `database.Postgres`, the Postgres volume, `mcp`,
 `bank-sync`, `web`, and the bucket. A fresh bucket inventory has 153 objects:
 131 registered attachment objects and the same 22 unregistered objects;
 none of the registered files are missing or differ in size. Neither the bucket
-nor any attachment row is part of the connection deletion. Production schema
-and connection rows have not yet been changed in this rehearsal.
+nor any attachment row is part of the connection deletion.
+
+### Production connection retirement
+
+Commit `6093f5c` deployed successfully to both the MCP and `bank-sync`
+services. Immediately before the database change, production still had the
+reviewed 8 disconnected and 3 connected connections, 5 accounts and 2,078
+booked transactions dependent on disconnected connections, 99 attachments
+linked to those transactions, 2,780 booked transactions overall, and 131
+attachments. The Drizzle migrator applied `0015`, advancing the production
+journal from 15 to 16 rows. A complete authenticated MCP read after this
+schema change still matched the pre-change account, transaction, and exact
+grouped-total digests.
+
+The guarded SQL script ran against production Postgres with `psql
+--single-transaction` and returned `DELETE 8`; every in-transaction
+preservation check passed. A fresh database read found exactly 3 connected
+connections and 0 disconnected ones. All 11 account rows remain, with 5
+historical rows now detached from obsolete connection IDs. All 2,780 booked
+transactions remain with 2,780 distinct database IDs and 2,780 distinct
+internal IDs; 2,078 historical transactions now have a null connection ID but
+retain their original account IDs and all other fields. All 131 attachment
+rows remain, including 99 linked to those historical transactions. The three
+active connection records were unchanged.
+
+A second complete authenticated MCP traversal after deletion returned the
+same 5 `connected` account groups, 2,780 booked transactions, and grouped
+totals. Account, transaction, and total SHA-256 digests were identical before
+schema change, after schema change, and after connection deletion. The
+follow-up bucket inventory still found 153 objects, with all 131 registered
+objects present at the expected sizes and the same 22 unregistered objects.
+Railway reports successful MCP, `bank-sync`, and Postgres deployments; the
+next unattended sync is scheduled for 2026-10-04 02:00 UTC and has not yet
+run after this cleanup. No extra provider sync was triggered. The temporary
+local restore was stopped and removed; the private production dump remains.
 
 ## Task 09: scheduled Executor read and final acceptance
 
@@ -193,13 +226,13 @@ tests cover both provider-coded and generic HTTP 429, one attempt per 429,
 and the exact six-hour deferral boundary. No live bank call was part of these
 checks.
 
-## Task 14: preserve history while preparing stale-connection cleanup
+## Task 14: October 2 baseline before stale-connection cleanup
 
 The user wants to delete the old disconnected bank connections and ultimately
-retire the web app, Trigger.dev jobs, and invoice/storage logic. Production
-cleanup has not started. The unattended bank sync and SEB recovery passed on
-October 3. At this point, Task 09's first scheduled Executor workflow was still
-outstanding; the scheduled read subsequently passed as recorded above.
+retire the web app, Trigger.dev jobs, and invoice/storage logic. At this
+baseline, production cleanup had not started. The unattended bank sync and SEB
+recovery passed on October 3; the scheduled Executor read and connection
+retirement subsequently passed as recorded above.
 Do not delete the active SEB connection or repeat its provider fetch merely for
 cleanup.
 
