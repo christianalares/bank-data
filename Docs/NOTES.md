@@ -1,6 +1,65 @@
 # Migration notes and handoff
 
-Updated: 2026-10-03 02:49 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-03 04:04 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 09: scheduled Executor read and final acceptance
+
+The scheduled `verify-hidden-village-bank-migration` heartbeat resumed the
+coordinating chat at 02:41:30 UTC on October 3 without a new user prompt. That
+chat sent this Task 09 follow-up. The previously user-owned
+`hidden_village_bank` Executor connection was retired in Task 13; current
+inventory has one authorized `bank_data.org.allBanks` connection. This
+scheduled continuation used that connection for the first unattended,
+read-only bank validation workflow. No Enable Banking provider call, token
+transfer, account mutation, or transaction-content export occurred.
+
+The Executor account call returned five selected groups: one personal Nordea,
+two personal Revolut, and two business SEB. All five reported `connected`.
+Their last successful sync times were between 02:00:25 and 02:00:34 UTC on
+October 3. A complete all-bank cursor traversal used limit 200 and returned
+13 pages of 200 plus one page of 180, for 2,780 distinct booked IDs. Every
+row belonged to one of the five selected account groups and its returned
+bank/workspace scope. No cursor repeated, and the last page reported
+`incompletePage=false` with no continuation cursor. Page-level exact
+two-decimal credits, negative debits, and net matched the independent
+`summarize_all_bank_transactions` response for each bank, workspace kind, and
+currency. The counts were 1,959 Nordea, 597 Revolut, and 224 SEB, all SEK.
+Amounts, transaction IDs, account IDs, and transaction text were compared
+inside the Executor call and omitted from this record.
+
+For the inclusive UTC window 2026-10-01 through 2026-10-03, the Executor
+totals and complete one-page transaction read agreed on nine unique booked
+rows and exact amounts: five Nordea and four SEB, all SEK. Per-account SEB
+checks found zero and four rows respectively, with complete pages, selected
+account scope, and matching exact totals. This is a read-only stored-data
+check, not evidence that every future provider transaction has already been
+imported.
+
+The Railway deployment that served the 02:00 UTC schedule started its
+container at 02:00:25 and emitted a structured completion record at
+02:00:45. That record reports three synced connections, five synced accounts,
+69 transaction upserts, 26 historical overlaps skipped, zero booking-date
+drifts, zero deferred connections, and no error. Upserts are processed rows,
+not 69 new booked rows. Railway's available deploy logs contain only `info`
+entries and no explicit numeric process exit code. The deployment was
+subsequently replaced by a newer successful deployment at 02:51 UTC. Railway
+now schedules the next cron for 2026-10-04 02:00 UTC. The completion log and
+persisted results are the available run-success evidence.
+
+A fresh read-only production query found 2,780 booked rows, 2,780 distinct
+database IDs, 2,780 distinct internal IDs, and zero pending rows. The active
+SEB connection is `connected`, its error is null, its `lastSyncedAt` advanced
+to 02:00:25 UTC, and it holds 96 booked rows. The older disconnected SEB
+source retains 128 historical rows. The previous 429 update was at 10:13 UTC
+on October 2, more than six hours before this run. Zero deferred connections
+was therefore expected; this production run exercised the allowed-retry path,
+not the guard's skip path. The six-hour skip boundary remains covered by the
+Task 09 source tests recorded below. No extra provider sync was started.
+
+The bounded snapshot comparison, consent renewal, restore test, Railway cron
+recovery, and first scheduled Executor read-only workflow now meet Task 09's
+acceptance checks. Task 10 cleanup remains separate and subject to the
+protected-Postgres cutover rules.
 
 ## Task 09: unattended SEB recovery on October 3
 
@@ -21,9 +80,9 @@ Nordea and two SEB rows while retaining the historical SEB rows. A business
 SEB summary for 2026-10-01 through 2026-10-03 found four booked rows.
 These were read-only checks; no extra Enable Banking fetch was triggered.
 
-The unattended Railway sync and SEB status recovery gates are satisfied.
-Task 09 remains in progress because the first scheduled Executor bookkeeping
-workflow has not been observed. The MCP freshness and booked counts establish
+The unattended Railway sync and SEB status recovery gates were satisfied at
+this point. Task 09 still required the first scheduled Executor bookkeeping
+workflow. The MCP freshness and booked counts established
 the stored-data baseline for that workflow; they do not prove that a future
 unbooked bank transaction has already appeared. Do not run an extra provider
 sync merely for acceptance. The separate recurring SEB recovery heartbeat
@@ -95,7 +154,8 @@ checks.
 The user wants to delete the old disconnected bank connections and ultimately
 retire the web app, Trigger.dev jobs, and invoice/storage logic. Production
 cleanup has not started. The unattended bank sync and SEB recovery passed on
-October 3, but Task 09's first scheduled Executor workflow remains outstanding.
+October 3. At this point, Task 09's first scheduled Executor workflow was still
+outstanding; the scheduled read subsequently passed as recorded above.
 Do not delete the active SEB connection or repeat its provider fetch merely for
 cleanup.
 
