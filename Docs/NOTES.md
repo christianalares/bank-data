@@ -1,6 +1,33 @@
 # Migration notes and handoff
 
-Updated: 2026-10-02 15:18 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-03 02:49 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 09: unattended SEB recovery on October 3
+
+Railway's scheduled `bank-sync` container started at 02:00:25 UTC from the
+deployed `8162994` source. Its structured completion log reported three
+synced connections, five accounts, zero deferred connections, and no error.
+A read-only production query confirmed the active SEB connection
+`bda879c6-a0e0-4746-8b4e-6356d3a80f3d` is `connected`, has
+`lastSyncedAt=2026-10-03 02:00:25 UTC`, and has a null `errorMessage`.
+The renewed connection holds 96 booked rows, up from 94 before this run.
+
+An authenticated Executor call to the production `bank_data.org.allBanks`
+connection returned five selected account groups. Both business SEB groups
+reported `connected` and the same 02:00:25 UTC freshness. The booked summary
+returned 1,959 Nordea, 597 Revolut, and 224 SEB rows in SEK, totaling 2,780.
+The pre-run baseline was 1,957 + 597 + 222 = 2,776; the new run added two
+Nordea and two SEB rows while retaining the historical SEB rows. A business
+SEB summary for 2026-10-01 through 2026-10-03 found four booked rows.
+These were read-only checks; no extra Enable Banking fetch was triggered.
+
+The unattended Railway sync and SEB status recovery gates are satisfied.
+Task 09 remains in progress because the first scheduled Executor bookkeeping
+workflow has not been observed. The MCP freshness and booked counts establish
+the stored-data baseline for that workflow; they do not prove that a future
+unbooked bank transaction has already appeared. Do not run an extra provider
+sync merely for acceptance. The separate recurring SEB recovery heartbeat
+can be paused now that `connected` and MCP freshness are verified.
 
 ## Task 09: SEB rate-limit investigation on October 2
 
@@ -67,9 +94,10 @@ checks.
 
 The user wants to delete the old disconnected bank connections and ultimately
 retire the web app, Trigger.dev jobs, and invoice/storage logic. Production
-cleanup has not started: Task 09 still needs a successful unattended sync and
-SEB remains subject to `ASPSP_RATE_LIMIT_EXCEEDED` (HTTP 429). Do not delete
-the active SEB connection or repeat its provider fetch merely for cleanup.
+cleanup has not started. The unattended bank sync and SEB recovery passed on
+October 3, but Task 09's first scheduled Executor workflow remains outstanding.
+Do not delete the active SEB connection or repeat its provider fetch merely for
+cleanup.
 
 Read-only production SQL found 2,776 distinct booked transactions: 1,950 on a
 disconnected personal Nordea source, 7 on its renewed connection, 597 on the
