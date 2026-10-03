@@ -1,6 +1,56 @@
 # Migration notes and handoff
 
-Updated: 2026-10-03 09:55 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-03 10:16 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 10: bucket archive and live retirement inventory
+
+The production Railway environment still has four live services: `mcp`,
+`bank-sync`, `Postgres`, and `web`. The existing 5 GB Postgres volume remains
+mounted at `/var/lib/postgresql/data`; the bucket is live. All four latest
+deployments report `SUCCESS`. Railway reports no staged changes. A fresh
+`railway config plan --json --detailed-exit-code` against the unchanged IaC
+returned `No changes`, zero actions and diagnostics, and no staged patch. Its
+current and desired graphs contain the same six resource addresses, including
+Postgres, its volume, and the bucket. This is a baseline, not a deletion plan.
+
+The production Trigger worker is version `20260825.3` and still registers six
+legacy tasks. The banking schedule is inactive, but the six-hour Gmail import
+remains active. Its October 3 06:01 UTC run completed. Railway HTTP logs for
+the old web service contain 102 requests on October 1 and 2; the latest was
+October 2 16:20 UTC. The source still contains Gmail and invoice processing,
+attachment tools and storage access, and the separate personal search worker.
+The MCP `allBanks` bank reads do not require that worker, but document access
+still depends on the bucket. Preserve the bucket until its long-term document
+path is verified. The next unattended `bank-sync` after Task 14 is due on
+October 4 at 02:00 UTC.
+
+A private local archive of every bucket object is at
+`/Users/christian/.local/share/bank-data/backups/2026-10-03-task-10-bucket`.
+It has directory mode `0700`, object and manifest file mode `0600`, 153 objects,
+and 21,065,969 bytes. `manifest.jsonl` records each key, byte count, content
+type, and SHA-256; its own SHA-256 is
+`366a3f5a1ad8417145f27f8c9cca45c8beb69c4270f22312273fc09fc0aadb0c`.
+The export used `scripts/archive-railway-bucket.mjs` with production bucket
+variables passed only to the local process. It did not log credentials, keys,
+filenames, or document contents. A second local pass read and hashed all 153
+archived files. Every key and size matched `bookkeeper-os`'s 153-row
+`bucket-objekt.csv`; all 148 previously recorded content hashes matched.
+There were zero missing rows, size differences, digest differences, or file
+permission differences. The metadata identifies 131 registered attachments
+and 22 objects without an attachment row. This archive is a recovery copy,
+not yet a verified replacement for live document access. The production bucket
+and all attachment records remain untouched.
+
+Before retirement, verify the first post-Task-14 bank sync and complete the
+document handoff. Stop the old Gmail import before taking a final incremental
+bucket snapshot so its archived object set cannot drift. Then review a fresh
+IaC deletion plan resource by resource: keep Postgres, its volume, `mcp`, and
+`bank-sync`; delete `web` only after its routes and domains have no remaining
+consumers. Retire the Trigger worker and the personal search worker after
+their live schedules and callers are accounted for. Remove obsolete source
+code and variables without dropping historical database tables or attachment
+links. Keep the bucket until long-term document access and manifest checks
+pass. No retirement change has been applied yet.
 
 ## Task 14: isolated deletion rehearsal and production gate
 
