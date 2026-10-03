@@ -1,6 +1,50 @@
 # Migration notes and handoff
 
-Updated: 2026-10-03 04:04 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-03 09:52 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 14: isolated deletion rehearsal and production gate
+
+Task 09 is complete: the October 3 unattended sync and scheduled Executor
+read verified five connected account groups and 2,780 distinct booked rows.
+A new custom-format production dump, newer than that sync, is at
+`/Users/christian/.local/share/bank-data/backups/2026-10-03-pre-task-14.dump`.
+It is mode `0600`, 3,945,215 bytes, with SHA-256
+`6576c34492b64bf33a93242040b08eda243e0ce28103e78c90d4b90f86eb767a`.
+The private local PostgreSQL 18 restore completed without error and contains
+2,780 distinct booked IDs, 131 attachment rows, and the 15 existing Drizzle
+migrations. Never restore it over the Railway Postgres service.
+
+Migration `0015` changes the historical account and transaction references to
+nullable foreign keys with `ON DELETE SET NULL`. Selected-account reads now
+include detached historical sources and prefer a connected source for balance
+and freshness. A guarded deletion script requires exactly eight disconnected
+connections, five dependent accounts, 2,078 dependent booked transactions,
+99 transaction-linked attachments, three connected connections, 2,780 total
+booked rows, zero pending rows, and 131 attachment rows. It locks the relevant
+tables, snapshots all account, transaction, attachment, and surviving
+connection rows, and compares them after deletion in one transaction. Any
+changed precondition or preservation mismatch aborts the transaction.
+
+On the isolated restore, the Drizzle migrator advanced from 15 to 16 journal
+rows. The guarded deletion removed eight disconnected connections and detached
+the five accounts and 2,078 transactions. It preserved all 11 account rows,
+2,780 booked transactions, 131 attachment rows, every account/transaction ID,
+all other row fields, and every attachment link. A second execution correctly
+failed its precondition guard. With the production encryption key supplied
+only to the local process, the restored post-deletion all-bank service returned
+five `connected` groups and 2,780 booked rows. Its account, full transaction,
+and grouped total SHA-256 digests matched an authenticated production MCP
+baseline exactly. No transaction text, IDs, amounts, secrets, or attachment
+contents were printed.
+
+A fresh `railway config plan --json --detailed-exit-code` reported `No changes`,
+zero change-set actions and diagnostics, and no staged patch. Its current and
+desired graphs both include `database.Postgres`, the Postgres volume, `mcp`,
+`bank-sync`, `web`, and the bucket. A fresh bucket inventory has 153 objects:
+131 registered attachment objects and the same 22 unregistered objects;
+none of the registered files are missing or differ in size. Neither the bucket
+nor any attachment row is part of the connection deletion. Production schema
+and connection rows have not yet been changed in this rehearsal.
 
 ## Task 09: scheduled Executor read and final acceptance
 

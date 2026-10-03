@@ -232,9 +232,9 @@ export const bankAccount = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspace.id, { onDelete: 'cascade' }),
-    connectionId: uuid('connection_id')
-      .notNull()
-      .references(() => bankConnection.id, { onDelete: 'cascade' }),
+    connectionId: uuid('connection_id').references(() => bankConnection.id, {
+      onDelete: 'set null',
+    }),
     providerAccountId: text('provider_account_id').notNull(),
     name: text('name').notNull(),
     iban: text('iban'),
@@ -261,9 +261,9 @@ export const bankTransaction = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspace.id, { onDelete: 'cascade' }),
-    connectionId: uuid('connection_id')
-      .notNull()
-      .references(() => bankConnection.id, { onDelete: 'cascade' }),
+    connectionId: uuid('connection_id').references(() => bankConnection.id, {
+      onDelete: 'set null',
+    }),
     accountId: uuid('account_id')
       .notNull()
       .references(() => bankAccount.id, { onDelete: 'cascade' }),

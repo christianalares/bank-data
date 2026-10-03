@@ -31,7 +31,7 @@ function account(id: string, createdAt: string, name: string, override: string |
 function mockDb(rows: unknown[]): Database {
   const query = { where: async () => rows }
   return {
-    select: () => ({ from: () => ({ innerJoin: () => query }) }),
+    select: () => ({ from: () => ({ leftJoin: () => query }) }),
   } as unknown as Database
 }
 
@@ -151,6 +151,42 @@ describe('selected bank account identity', () => {
       currentBalance: '200.00',
       connectionStatus: 'error',
       lastSyncedAt: '2026-10-02T01:00:00.000Z',
+    })
+  })
+
+  it('keeps detached historical account IDs available through a renewed connection', async () => {
+    const oldId = '00000000-0000-4000-8000-000000000005'
+    const newId = '00000000-0000-4000-8000-000000000006'
+    const rows = [
+      {
+        account: {
+          ...account(oldId, '2025-01-01T00:00:00.000Z', 'old', null),
+          iban: 'SE12 3456 7890',
+        },
+        connection: null,
+      },
+      {
+        account: {
+          ...account(newId, '2026-10-01T00:00:00.000Z', 'renewed', null),
+          iban: 'se1234567890',
+        },
+        connection: {
+          name: 'Enable Banking SEB',
+          rawMetadata: null,
+          status: 'connected',
+          lastSyncedAt: new Date('2026-10-03T02:00:00.000Z'),
+        },
+      },
+    ]
+
+    const result = await loadSelectedBankAccounts(mockDb(rows), 'workspace', 'business')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: oldId,
+      sourceIds: [newId, oldId],
+      bankName: 'SEB',
+      connectionStatus: 'connected',
     })
   })
 })
