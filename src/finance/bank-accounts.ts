@@ -30,7 +30,7 @@ export async function loadSelectedBankAccounts(
   const rows = await db
     .select({ account: bankAccount, connection: bankConnection })
     .from(bankAccount)
-    .innerJoin(bankConnection, eq(bankAccount.connectionId, bankConnection.id))
+    .leftJoin(bankConnection, eq(bankAccount.connectionId, bankConnection.id))
     .where(and(eq(bankAccount.workspaceId, workspaceId), eq(bankAccount.included, true)))
 
   const groups = new Map<string, typeof rows>()
@@ -59,12 +59,13 @@ export async function loadSelectedBankAccounts(
       group.sort((left, right) => {
         const rank = { connected: 0, error: 1, pending: 2, disconnected: 3 }
         return (
-          rank[left.connection.status] - rank[right.connection.status] ||
+          rank[left.connection?.status ?? 'disconnected'] -
+            rank[right.connection?.status ?? 'disconnected'] ||
           right.account.createdAt.getTime() - left.account.createdAt.getTime()
         )
       })
       const primary = group[0]
-      const bankName = getBankName(primary.connection)
+      const bankName = primary.connection ? getBankName(primary.connection) : 'Archived bank'
       const payloads =
         kind === 'personal'
           ? group.map(({ account }) =>
@@ -88,8 +89,8 @@ export async function loadSelectedBankAccounts(
         currentBalance: primary.account.currentBalance,
         availableBalance: primary.account.availableBalance,
         updatedAt: primary.account.updatedAt.toISOString(),
-        lastSyncedAt: primary.connection.lastSyncedAt?.toISOString() ?? null,
-        connectionStatus: primary.connection.status,
+        lastSyncedAt: primary.connection?.lastSyncedAt?.toISOString() ?? null,
+        connectionStatus: primary.connection?.status ?? 'disconnected',
       }
     })
     .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
