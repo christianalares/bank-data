@@ -8,7 +8,6 @@
   "files": {
     "ignoreUnknown": false,
     "includes": [
-      "apps/web/src/**/*",
       "src/**/*",
       "scripts/**/*",
       "tsup.config.ts",

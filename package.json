@@ -4,29 +4,25 @@
   "type": "module",
   "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
   "scripts": {
-    "dev": "pnpm dev:infra && pnpm dev:web",
+    "dev": "pnpm dev:infra && pnpm dev:mcp",
     "dev:infra": "docker compose up -d postgres",
-    "dev:web": "dotenv -e .env -- vite dev apps/web --config apps/web/vite.config.ts --port 3000",
     "dev:mcp": "dotenv -e .env -- tsx src/mcp/index.ts",
     "dev:jobs": "dotenv -e .env -- trigger dev --config trigger.config.ts",
-    "build": "pnpm build:server && pnpm build:web",
+    "build": "pnpm build:server",
     "build:server": "tsup",
-    "build:web": "vite build apps/web --config apps/web/vite.config.ts",
     "start:mcp": "node dist/mcp.js",
     "start:mcp:local": "dotenv -e .env -- node dist/mcp.js",
     "start:sync": "node dist/sync.js",
-    "start:web": "node apps/web/.output/server/index.mjs",
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "biome check .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p apps/web/tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "dotenv -e .env -- drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "dotenv -e .env -- drizzle-kit migrate --config drizzle.config.ts",
     "db:migrate:prod": "drizzle-kit migrate --config drizzle.config.ts",
     "db:check": "drizzle-kit check --config drizzle.config.ts",
     "db:studio": "dotenv -e .env -- drizzle-kit studio --config drizzle.config.ts",
-    "db:seed": "dotenv -e .env -- tsx src/auth/seed.ts",
     "test:smoke": "node scripts/smoke-server.mjs"
   },
   "devDependencies": {
@@ -110,16 +106,12 @@
     "zod": "^4.4.3"
   },
   "imports": {
-    "#/*": "./apps/web/src/*",
-    "#auth": "./src/auth/index.ts",
-    "#auth/client": "./src/auth/client.ts",
     "#banking": "./src/banking/index.ts",
     "#db": "./src/db/index.ts",
     "#db/schema": "./src/db/schema.ts",
     "#finance": "./src/finance/index.ts",
     "#jobs": "./src/jobs/index.ts",
-    "#storage": "./src/storage/index.ts",
-    "#ui/lib/utils": "./src/ui/lib/utils.ts"
+    "#storage": "./src/storage/index.ts"
   },
   "bin": {
     "bank-data-mcp": "./dist/mcp.js"
