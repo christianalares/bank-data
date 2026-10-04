@@ -1,6 +1,5 @@
 import { createHash, sign } from 'node:crypto'
 
-export * from './personal-search'
 export * from './personal-transfers'
 
 export const ENABLE_BANKING_NO_ACCOUNTS_ERROR =

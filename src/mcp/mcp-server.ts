@@ -402,7 +402,7 @@ function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mo
     {
       title: 'Search personal transactions',
       description:
-        'Read personal transactions using exact dates, amounts, direction, account, currency, or semantic text such as "video streaming". Results are newest first and cursor-paginated. Set includeInternalTransfers false for spending analysis.',
+        'Read personal transactions using exact dates, amounts, direction, account, currency, or indexed text tokens. Results are newest first and cursor-paginated. Set includeInternalTransfers false for spending analysis.',
       inputSchema: searchPersonalTransactionsInputSchema,
       outputSchema: personalTransactionPageSchema,
       annotations: readOnlyAnnotations,
@@ -425,7 +425,7 @@ function createPersonalFinanceMcpServer(context: Extract<FinanceMcpContext, { mo
     {
       title: 'Summarize personal spending',
       description:
-        'Calculate deterministic gross spending, refunds, and net spending grouped by original currency. Confirmed internal transfers are excluded by default. A semantic query can scope the summary, for example "streaming services".',
+        'Calculate deterministic gross spending, refunds, and net spending grouped by original currency. Confirmed internal transfers are excluded by default. Indexed text tokens can scope the summary.',
       inputSchema: personalSpendingSummaryInputSchema,
       outputSchema: personalSpendingSummarySchema,
       annotations: readOnlyAnnotations,

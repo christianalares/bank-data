@@ -11,7 +11,6 @@
       "src/**/*",
       "scripts/**/*",
       "tsup.config.ts",
-      "trigger.config.ts",
       ".railway/railway.ts",
       "**/.vscode/**/*",
       "**/index.html",
