@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "types": ["node"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -12,6 +13,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "drizzle.config.ts", "trigger.config.ts", "tsup.config.ts"],
+  "include": ["src/**/*.ts", "drizzle.config.ts", "tsup.config.ts"],
   "exclude": ["infra", "dist", "node_modules"]
 }

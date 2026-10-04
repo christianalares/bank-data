@@ -1,5 +1,4 @@
 import { and, desc, eq, gte, inArray, lt, lte, or, type SQL } from 'drizzle-orm'
-import { searchPersonalTransactionVectors } from '#banking'
 import {
   bankAccount,
   bankTransaction,
@@ -204,31 +203,21 @@ export class PersonalFinanceService {
     }
 
     const tokenHashes = tokenizePersonalSearchText(query).map(createPersonalSearchToken)
-    const [exactRows, vectorRows] = await Promise.all([
-      tokenHashes.length > 0
-        ? this.db
-            .select({ transactionId: personalTransactionSearchToken.transactionId })
-            .from(personalTransactionSearchToken)
-            .where(
-              and(
-                eq(personalTransactionSearchToken.workspaceId, this.workspaceId),
-                inArray(personalTransactionSearchToken.tokenHash, tokenHashes),
-              ),
-            )
-        : Promise.resolve([]),
-      searchPersonalTransactionVectors({
-        query,
-        workspaceId: this.workspaceId,
-        limit: 100,
-      }).catch(() => []),
-    ])
+    if (tokenHashes.length === 0) {
+      return []
+    }
 
-    return [
-      ...new Set([
-        ...exactRows.map((row) => row.transactionId),
-        ...vectorRows.map((row) => row.id),
-      ]),
-    ]
+    const exactRows = await this.db
+      .select({ transactionId: personalTransactionSearchToken.transactionId })
+      .from(personalTransactionSearchToken)
+      .where(
+        and(
+          eq(personalTransactionSearchToken.workspaceId, this.workspaceId),
+          inArray(personalTransactionSearchToken.tokenHash, tokenHashes),
+        ),
+      )
+
+    return [...new Set(exactRows.map((row) => row.transactionId))]
   }
 
   private getTransactionConditions({
