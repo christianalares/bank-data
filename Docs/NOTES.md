@@ -1,6 +1,40 @@
 # Migration notes and handoff
 
-Updated: 2026-10-04 02:46 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-04 03:05 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 10: Trigger source and personal search retirement
+
+Commit `2d0c44d` removed the legacy Trigger task source and client dependency,
+plus the call to the personal search Worker. The retained personal transaction
+text filter uses only the existing hashed token index in Postgres. Typecheck,
+36 active tests, Biome, Drizzle check, build, and the MCP smoke check passed.
+The new MCP and bank-sync deployments both reached `SUCCESS`. A fresh
+authenticated Executor read still showed five connected, freshly synced
+account groups and 2,781 booked transactions. No provider call was forced.
+
+Cloudflare showed one old `hidden-village-personal-search` deployment and a
+dedicated Vectorize index with 2,547 derived vectors. After the replacement
+code deployed, the Worker was deleted and its absence confirmed. The dedicated
+index was deleted separately; a fresh index list no longer contains it. The
+unrelated `ai-os-memories` index remains. A pinned Railway plan then showed
+exactly two variable deletions, `mcp.PERSONAL_SEARCH_API_TOKEN` and
+`mcp.PERSONAL_SEARCH_SERVICE_URL`, with zero diagnostics, no staged patch, and
+the same Postgres, volume, MCP, bank-sync, and bucket resources in both graphs.
+Both variables are absent from live MCP configuration; bank and bucket variables
+remain. The follow-up IaC plan shows zero changes, and the MCP deployment is
+healthy. The retired Worker source has been removed from this branch.
+
+All 132 production attachment rows belong to the business workspace and have
+132 distinct bucket keys. The 154-object, 21,144,232-byte final archive and
+its 132-row attachment metadata were copied to
+`/Users/christian/Documents/Hidden Village AB/bookkeeper-os/docs/historik/migrering-2026-10-04/bucket-arkiv`.
+The archive verifier checked every object size and SHA-256, every registered
+key, the 22 unregistered objects, and the manifest and metadata digests. The
+canonical project already has local content matching 150 archived objects.
+The four unmatched unique files are one newer PDF and three older preview PNGs.
+The PDF is preserved in the archive but is not yet in the active accounting
+inventory. The original private archive remains as a second copy, and the live
+bucket remains untouched while the final access path is reviewed.
 
 ## Task 10: October 4 sync, Gmail freeze, and web retirement
 
