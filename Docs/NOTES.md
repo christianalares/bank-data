@@ -1,6 +1,76 @@
 # Migration notes and handoff
 
-Updated: 2026-10-03 10:16 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-04 02:46 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 10: October 4 sync, Gmail freeze, and web retirement
+
+The first unattended Railway `bank-sync` after the Task 14 connection cleanup
+started at 02:04:14 UTC and completed at 02:04:23 UTC without an error. Its
+structured log reports three synced connections, five accounts, 67 processed
+transaction upserts, 23 historical overlaps skipped, zero deferred connections,
+zero booking-date drifts, and zero expired pending attempts. These upserts are
+processed rows, not 67 newly booked rows. A read-only production query found
+three connected connections with no errors, 11 account rows, 2,781 booked
+transactions with 2,781 distinct database and internal IDs, zero pending rows,
+and 132 attachment rows. The latest connection sync was at 02:04:21 UTC.
+
+The authorized Executor `bank_data.org.allBanks` connection returned five
+selected account groups, all connected and freshly synced. Complete cursor
+pagination returned 13 pages of 200 and one page of 181, with 2,781 unique
+booked IDs, no repeated cursor, only selected accounts, and a complete final
+page. The grouped exact credit, debit, and net totals matched the independent
+totals tool for all three bank and workspace groups. A bounded October 3 to 4
+UTC read contained one booked row, with matching count and complete pagination.
+No provider call was forced for this validation.
+
+Trigger's production worker `20260825.3` still ran the six-hour Gmail import at
+00:01 UTC on October 4. The schedule is declarative and could not be disabled
+from the dashboard or imperative schedule API. Source commit `00546ba` removed
+the `scheduled-sync-gmail` task but retained the manual `sync-gmail-inbox`
+task. Trigger dry-run built without the scheduled task; typechecks, 36 tests,
+Biome, and the server build passed. Production deployment `20261004.1`
+completed with five registered tasks and no `scheduled-sync-gmail`. Trigger
+reported zero executing runs after deployment. A later check after the former
+06:00 UTC slot should confirm no new scheduled Gmail run. The old Trigger
+banking schedule remains inactive. Manual Trigger tasks and the project still
+exist and need separate retirement.
+
+With automatic Gmail import removed, a second private bucket export was saved
+at `/Users/christian/.local/share/bank-data/backups/2026-10-04-task-10-bucket`.
+It has directory mode `0700`, object files mode `0600`, 154 objects and
+21,144,232 bytes. Its manifest SHA-256 is
+`6045618748d0a22240afa746bd9edc2f076c1ee49e4ba945a628cd8db715a01e`.
+All 153 objects from the October 3 archive are still present with identical
+sizes and content hashes. The one new object accounts for the new attachment
+record. Every archived file passed a fresh SHA-256 check. A digest over the
+sorted registered object key hashes and byte sizes matched a fresh production
+query across all 132 attachment records, with 132 distinct storage keys. All
+148 content hashes already recorded in `bookkeeper-os` still matched. The other
+22 objects remain unregistered. This is a complete private recovery copy;
+the live bucket and database attachment links remain intact until document
+access has a verified long-term home.
+
+Railway HTTP logs showed zero requests to the old `web` service from October 3
+through the October 4 retirement. New bank consent and read paths are served
+by `mcp`. Commit `17a968e` removed `web` from `.railway/railway.ts`. The pinned
+production plan had exactly one destructive action, `Delete service web`, with
+zero diagnostics and no staged patch. Its current and desired graphs both
+retained `database.Postgres`, its existing volume, `service.mcp`,
+`service.bank-sync`, and `bucket.bucket`. After the reviewed apply, live
+Railway inventory had only those three services plus the volume and bucket;
+all three service deployments reported `SUCCESS`. A fresh IaC plan returned
+`No changes`, zero actions and diagnostics. An authenticated all-bank account
+and totals read still returned five connected groups and 2,781 booked rows.
+
+The tracked legacy `apps/web`, `src/auth`, and `src/ui` source was removed after
+the service retirement. Root scripts and README now build and run the MCP and
+sync entry points without the old web app. Typecheck, all 36 active tests,
+Biome, server build, and Drizzle check passed. The Drizzle schema, migrations,
+production database, bucket, and historical attachment links were not changed.
+The remaining Task 10 work is to retire the manual Trigger tasks and project,
+remove the personal semantic search tool before deleting its Cloudflare worker,
+remove unused invoice and storage code after document handoff, and decide when
+the bucket can be retired without losing document access.
 
 ## Task 10: bucket archive and live retirement inventory
 

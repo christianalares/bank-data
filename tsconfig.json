@@ -13,5 +13,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "drizzle.config.ts", "trigger.config.ts", "tsup.config.ts"],
-  "exclude": ["apps/web", "infra", "dist", "node_modules"]
+  "exclude": ["infra", "dist", "node_modules"]
 }
