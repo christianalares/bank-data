@@ -12,5 +12,4 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
-  external: ['@napi-rs/canvas', 'pdf-to-img', 'pdfjs-dist'],
 })
