@@ -1,6 +1,42 @@
 # Migration notes and handoff
 
-Updated: 2026-10-04 03:22 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-04 13:25 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 10: final bucket retirement and production verification
+
+The user confirmed that an archived document opens from the canonical iCloud
+Drive folder on their phone. On this Mac, the canonical archive initially
+occupied no local data blocks because iCloud had offloaded its files. Running
+`verifiera-bucket-arkiv.py` hydrated and rechecked the archive against its
+recorded manifest and attachment metadata digests. All 154 objects, 132
+registered attachments, 22 unregistered objects, file sizes, and SHA-256
+content hashes passed. The canonical `bookkeeper-os` archive and its verifier
+remain in place.
+
+A fresh Railway production plan initially showed exactly six destructive
+changes: remove the five `mcp.AWS_*` bucket variables and delete
+`bucket.bucket`. It had zero diagnostics and no staged patch. Both current
+and desired graphs retained `database.Postgres`, its existing volume,
+`service.mcp`, and `service.bank-sync`. The plan was saved outside the repo
+with the environment config etag. The first pinned apply removed the five
+variables and triggered a successful MCP redeploy, but the bucket remained
+live. A second IaC apply reported `applied` with no recorded changes while a
+fresh plan still proposed the bucket deletion. The exact production bucket
+`561c0021-6adc-458f-8640-ce0525d09b4d` was then deleted directly with
+Railway's bucket command, which returned `committed: true`.
+
+Final Railway inventory lists no buckets and three services: Postgres, MCP,
+and `bank-sync`, all with successful deployments. The existing Postgres volume
+remains mounted at `/var/lib/postgresql/data`, and the sync cron remains
+`0 2 * * *` UTC. The five AWS bucket variable names are absent from MCP's
+live variable list. A fresh IaC plan reports `No changes`, zero actions and
+diagnostics, and no staged patch. The MCP `/health` endpoint returned HTTP 200.
+An authenticated Executor `bank_data.org.allBanks` read after the retirement
+returned five selected connected account groups, last synced on October 4,
+and 2,781 booked transactions: 1,960 Nordea personal, 597 Revolut personal,
+and 224 SEB business, all SEK. The existing earlier full cursor traversal
+confirmed all 2,781 rows. No provider sync or database mutation was started
+for this retirement.
 
 ## Task 10: Trigger project, bank-only MCP, and bucket retirement gate
 

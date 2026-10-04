@@ -44,6 +44,6 @@ Local Postgres is published on port `5433` to avoid colliding with a machine-lev
 on the default `5432` port.
 
 The Railway configuration retains the protected Postgres service and volume,
-MCP service, bank-sync cron, and attachment bucket. Review the production plan
+MCP service, and bank-sync cron. Review the production plan
 before any infrastructure change. Follow the backup and restore gate in
 `Docs/PLAN.md` before any database change.
