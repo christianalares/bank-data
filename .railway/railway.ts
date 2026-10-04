@@ -1,13 +1,4 @@
-import {
-  bucket,
-  defineRailway,
-  github,
-  postgres,
-  preserve,
-  project,
-  service,
-  volume,
-} from 'railway/iac'
+import { defineRailway, github, postgres, preserve, project, service, volume } from 'railway/iac'
 
 export default defineRailway((context) => {
   if (context.projectId !== requiredSetting('RAILWAY_EXPECTED_PROJECT_ID')) {
@@ -35,8 +26,6 @@ export default defineRailway((context) => {
     region: 'europe-west4-drams3a',
     sizeMB: 5000,
   })
-  // Existing bucket [private resource identifier].
-  const bucketResource = bucket('bucket', { region: 'ams' })
   // Existing service [private resource identifier].
   const mcp = service('mcp', {
     source: migrationBranch,
@@ -44,11 +33,6 @@ export default defineRailway((context) => {
     start: 'pnpm start:mcp',
     replicas: { 'europe-west4-drams3a': 1 },
     env: {
-      AWS_ACCESS_KEY_ID: preserve(),
-      AWS_DEFAULT_REGION: preserve(),
-      AWS_ENDPOINT_URL: preserve(),
-      AWS_S3_BUCKET_NAME: preserve(),
-      AWS_SECRET_ACCESS_KEY: preserve(),
       BANK_CONSENT_BUSINESS_WORKSPACE_ID: preserve(),
       BANK_CONSENT_COOKIE_SECRET: preserve(),
       BANK_CONSENT_MCP_TOKEN: preserve(),
@@ -82,7 +66,7 @@ export default defineRailway((context) => {
     },
   })
   return project('bank-data', {
-    resources: [Postgres, mcp, bankSync, postgresVolume, bucketResource],
+    resources: [Postgres, mcp, bankSync, postgresVolume],
   })
 })
 
