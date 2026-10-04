@@ -41,4 +41,25 @@ describe('all-bank MCP scope', () => {
       await server.close()
     }
   })
+
+  it('exposes only bank reads through the legacy business token', async () => {
+    process.env.DATABASE_URL = 'postgres://local:local@localhost:5432/unused'
+    const server = createFinanceMcpServer({ mode: 'business' })
+    const client = new Client({ name: 'business-scope-test', version: '0.1.0' })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+
+    try {
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+      const result = await client.listTools()
+      expect(result.tools.map((tool) => tool.name).sort()).toEqual([
+        'list_bank_accounts',
+        'list_bank_transactions',
+        'summarize_bank_transactions',
+      ])
+      expect(result.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true)
+    } finally {
+      await client.close()
+      await server.close()
+    }
+  })
 })
