@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { logger, schedules, task } from '@trigger.dev/sdk'
+import { logger, task } from '@trigger.dev/sdk'
 import { eq } from 'drizzle-orm'
 import { attachment, createDb, gmailConnection, gmailImportedRef } from '#db'
 import { createStorageClient } from '#storage'
@@ -131,15 +131,5 @@ export const syncGmailInboxTask = task({
 
     logger.info('Gmail sync complete', { imported, skipped })
     return { imported, skipped }
-  },
-})
-
-// Runs every 6 hours — delegates to syncGmailInboxTask for the actual logic
-export const scheduledSyncGmailTask = schedules.task({
-  id: 'scheduled-sync-gmail',
-  cron: '0 */6 * * *',
-  run: async () => {
-    logger.info('Starting scheduled Gmail inbox sync')
-    await syncGmailInboxTask.triggerAndWait()
   },
 })
