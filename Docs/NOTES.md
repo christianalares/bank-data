@@ -1,6 +1,48 @@
 # Migration notes and handoff
 
-Updated: 2026-10-04 03:05 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-04 03:22 UTC. Branch: `codex/bank-mcp-migration`.
+
+## Task 10: Trigger project, bank-only MCP, and bucket retirement gate
+
+The Trigger dashboard for the old `hidden-village-app` project showed no
+executing runs and no runs after the Gmail schedule removal. The project was
+deleted using its exact project slug. The dashboard redirected to new-project
+creation, and a fresh Trigger project listing no longer contains its project
+reference. The unrelated Vitalplus project remains. Browser screenshot capture
+timed out on the locked host, so the dashboard transition and fresh provider
+inventory are the verification evidence.
+
+Commit `181c23d` removed the legacy business MCP invoice and attachment tools,
+their service, preview and storage code, and the unused application packages.
+The business token now exposes only three read-only bank tools. A focused MCP
+tool-list test confirms this, while the separate all-bank scope still exposes
+its own three reads. Typecheck, 35 active tests, Biome, Drizzle check, build,
+and MCP smoke checks passed. Both Railway deployments reached `SUCCESS`.
+An authenticated Executor read after deployment still returned five selected
+connected groups, fresh on October 4, and 2,781 booked transactions.
+
+The canonical archive in `bookkeeper-os` has all 154 bucket objects plus
+132 rows of attachment metadata. Its independent verifier checked every file
+hash and byte count, all 132 registered keys, the 22 other objects, and the
+manifest and metadata digests. The canonical project's
+`kontrollera-underlag.py --write-report` completed with zero errors. The
+archive lives in the Mac Documents folder, which is linked to iCloud Drive;
+the sync status reported no pending archive item. A server-side or phone read
+of the new iCloud Drive copy has not yet been confirmed. The original private
+archive is still present as a second local copy.
+
+After the replacement MCP code deployed and old Trigger project was deleted,
+a fresh read of every live bucket object matched the archive: 154 objects,
+21,144,232 bytes, zero missing keys, and zero size or SHA-256 mismatches.
+The bucket is still live. A pinned Railway plan prepared for its retirement
+has six destructive changes: delete the five `mcp.AWS_*` bucket credentials
+and delete `bucket.bucket`. It has zero diagnostics or staged patch. Current
+and desired graphs both retain `database.Postgres`, its existing volume,
+`service.mcp`, and `service.bank-sync`; no database or service deletion is in
+the change set. This plan has not been applied while independent archive
+access is pending confirmation. The proposed bucket removal was kept out of
+the committed IaC, so the branch still describes the live bucket. Recreate
+and review the plan from fresh production state before any later apply.
 
 ## Task 10: Trigger source and personal search retirement
 
