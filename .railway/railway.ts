@@ -63,8 +63,6 @@ export default defineRailway((context) => {
       MCP_API_TOKEN: preserve(),
       MCP_TRANSPORT: preserve(),
       PERSONAL_DATA_ENCRYPTION_KEY: preserve(),
-      PERSONAL_SEARCH_API_TOKEN: preserve(),
-      PERSONAL_SEARCH_SERVICE_URL: preserve(),
     },
   })
   const bankSync = service('bank-sync', {
