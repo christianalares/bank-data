@@ -17,7 +17,6 @@ export default defineRailway((context) => {
     throw new Error('This configuration targets the existing production environment only.')
   }
 
-  const bankData = github('christianalares/bank-data', { checkSuites: false })
   const migrationBranch = github('christianalares/bank-data', {
     branch: 'codex/bank-mcp-migration',
     checkSuites: false,
@@ -84,41 +83,7 @@ export default defineRailway((context) => {
       PERSONAL_DATA_ENCRYPTION_KEY: mcp.env.PERSONAL_DATA_ENCRYPTION_KEY,
     },
   })
-  // Existing service c0f5fbc3-2e22-4401-ade8-68671c3a5496.
-  const web = service('web', {
-    source: bankData,
-    // The web service still builds the legacy main-branch package until its retirement.
-    build: 'pnpm --filter @hidden-village/web build',
-    start: 'pnpm --filter @hidden-village/web start',
-    preDeploy: 'pnpm db:migrate:prod',
-    replicas: { 'europe-west4-drams3a': 1 },
-    networking: { privateNetworkEndpoint: 'hidden-village' },
-    env: {
-      AWS_ACCESS_KEY_ID: preserve(),
-      AWS_DEFAULT_REGION: preserve(),
-      AWS_ENDPOINT_URL: preserve(),
-      AWS_S3_BUCKET_NAME: preserve(),
-      AWS_SECRET_ACCESS_KEY: preserve(),
-      BETTER_AUTH_SECRET: preserve(),
-      BETTER_AUTH_URL: preserve(),
-      DATABASE_URL: preserve(),
-      ENABLE_BANKING_APPLICATION_ID: preserve(),
-      ENABLE_BANKING_PRIVATE_KEY_BASE64: preserve(),
-      ENABLE_BANKING_REDIRECT_ORIGIN: preserve(),
-      GMAIL_ENCRYPTION_KEY: preserve(),
-      GOOGLE_CLIENT_ID: preserve(),
-      GOOGLE_CLIENT_SECRET: preserve(),
-      GOOGLE_REDIRECT_URI: preserve(),
-      MCP_PUBLIC_URL: preserve(),
-      PERSONAL_DATA_ENCRYPTION_KEY: preserve(),
-      PERSONAL_SEARCH_API_TOKEN: preserve(),
-      PERSONAL_SEARCH_SERVICE_URL: preserve(),
-      REDIS_URL: preserve(),
-      TRIGGER_SECRET_KEY: preserve(),
-    },
-  })
-
   return project('bank-data', {
-    resources: [Postgres, mcp, bankSync, web, postgresVolumeR7JC, bucketResource],
+    resources: [Postgres, mcp, bankSync, postgresVolumeR7JC, bucketResource],
   })
 })
