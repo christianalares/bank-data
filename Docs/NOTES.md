@@ -1,6 +1,41 @@
 # Migration notes and handoff
 
-Updated: 2026-10-04 13:25 UTC. Branch: `codex/bank-mcp-migration`.
+Updated: 2026-10-05 07:33 UTC. Branch: `codex/bank-mcp-migration`.
+
+## October 5 unattended bank sync and final migration check
+
+The scheduled `bank-sync` container started at 02:03:01 UTC and logged a
+successful completion at 02:03:09 UTC: three synced connections, five accounts,
+70 processed transaction upserts, 21 historical overlaps skipped, and zero
+deferred connections, booking-date drifts, or expired pending attempts. The
+Railway deployment reports `SUCCESS` with its cron instance exited; the
+available log does not include a separate numeric exit code. A read-only
+production query found three connected connections without errors, all last
+synced between 02:03:01 and 02:03:07 UTC, 11 account rows, 2,785 booked rows
+with 2,785 distinct database and internal IDs, zero pending rows, and 132
+attachment rows. The booked count is four higher than the previous verified
+October 4 snapshot.
+
+An authenticated call to the production MCP `allBanks` scope exposed only its
+three bank read tools. It returned five selected connected account groups,
+all synced in the same October 5 run. Complete cursor pagination returned
+2,785 unique booked rows in 14 pages, only from selected accounts, with no
+repeated cursor. The exact credits, debits, net, and row counts matched the
+three grouped totals returned by the separate summary tool. A bounded October
+4 to 5 UTC read returned two unique rows in one complete page and matched its
+summary count. These checks read stored data and did not call the bank provider.
+The Executor-specific connection was not available to this run; its
+post-retirement authenticated read was verified on October 4.
+
+The canonical iCloud Drive archive verifier passed again for all 154 objects,
+132 registered attachments, and 22 other objects. `railway bucket list` for
+production is empty, and the retired bucket ID cannot be opened in that
+environment. The project-level `railway status` still includes a bucket
+identity, but no bucket is deployed in production. The three intended services
+remain, Postgres is running with its original ready volume, and MCP is running
+with a successful deployment. A fresh production IaC plan has zero changes,
+diagnostics, and staged patch; both graphs retain Postgres, its volume, MCP,
+and `bank-sync`.
 
 ## Task 10: final bucket retirement and production verification
 
