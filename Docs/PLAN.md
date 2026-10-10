@@ -98,3 +98,24 @@ can inspect.
   `biome.json`, and `.railway/railway.ts`.
 
 See `NOTES.md` for verified observations and the next safe step.
+
+## Post-migration payment feasibility research — 2026-10-10
+
+The user requested investigation of SEB Sweden company invoice payments and
+accepted independent bank authorization for every payment. The assistant reads
+invoices; any future MCP payment tools receive explicit payment instructions.
+This authorizes research, not payment implementation, provider signup, external
+messages, live payments, or production changes. The migration's read-only scope
+and completed acceptance evidence remain in effect.
+
+Public-source research and current-code inspection are recorded in
+`SEB-PAYMENTS-RESEARCH.md`. SEB corporate Swedish Giro payment APIs exist; the
+current Enable Banking production PIS offering requires the integrator's own
+qualifying licence. Open Payments is a candidate licensed provider. Production
+eligibility for this company's internal MCP, pricing, SEB account permissions,
+mandatory approval without exemptions, and the exact same-iPhone authorization
+flow require provider confirmation and later acceptance testing.
+
+Before any implementation, resolve those access and security requirements and
+agree a bounded implementation scope. Preserve the production database and use
+the existing backup/restore gate before any future schema or production change.

@@ -37,6 +37,24 @@ with a successful deployment. A fresh production IaC plan has zero changes,
 diagnostics, and staged patch; both graphs retain Postgres, its volume, MCP,
 and `bank-sync`.
 
+## 2026-10-10: SEB company payment feasibility investigation
+
+The user requested investigation of explicit MCP payments for mostly Swedish
+company invoices, with one authorized signer, and accepted bank approval for
+every payment. Invoice extraction stays with the assistant. Public primary
+sources and local code were inspected; findings, limitations, proposed security
+requirements, and an unsent provider inquiry are in `SEB-PAYMENTS-RESEARCH.md`.
+
+This is research evidence, not live payment acceptance. The current MCP remains
+read-only for bank data. No provider account was created, no vendor message was
+sent, and no bank consent, payment, database, or infrastructure mutation was
+performed. Provider eligibility, cost, mandatory approval without exemptions,
+and actual SEB same-phone authorization remain unverified. The historical
+migration decisions and cutover gates are unchanged.
+
+Documentation validation: `git diff --check` and `pnpm check` passed. No runtime
+files changed; payment behavior was not tested or implemented.
+
 ## Task 10: final bucket retirement and production verification
 
 The user confirmed that an archived document opens from the canonical iCloud
