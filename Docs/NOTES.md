@@ -39,6 +39,32 @@ and `bank-sync`.
 
 ## 2026-10-10: SEB company payment feasibility investigation
 
+### Follow-up — 2026-10-11 Open Payments sandbox tests
+
+The user supplied sandbox credentials through the local ignored `.env` and
+authorized tests. `OPEN-PAYMENTS-SANDBOX.md` records OAuth, SEB capabilities,
+synthetic Bankgiro/Plusgiro invoices, same-device method discovery, normal and
+negative approval simulations, and verified unsigned cancellation. Credentials
+and challenge data were not logged or committed. The production MCP and
+database were not accessed by these tests.
+
+The simulator omits giro/OCR/reference fields from payment reads. Expired and
+unavailable-BankID authorization cases return `failed` but their payment status
+returns `ACSP`; the second-signer case correctly returns `PATC`. The standalone
+script flags missing fields and contradictory statuses as failed checks rather
+than treating HTTP success as acceptance. These are sandbox verification gaps;
+they do not demonstrate production authorization behavior.
+
+The initial exploratory run created five synthetic payments before cleanup was
+added. Subsequent runs attempt and verify cancellation for each created payment.
+No real funds moved. Production access, cost, mandatory BankID signing and the
+real same-phone flow remain open.
+
+Final repeatable run: 52 checks, 44 passed and 8 failed (six missing-field checks,
+two contradictory approval/payment statuses); all six final-run payments were
+cancelled with HTTP 204 and verified `CANC`. `node --check`, `pnpm check` (40
+files) and `git diff --check` passed. No existing runtime behavior was changed.
+
 The deeper parallel research pass added YAXI's genuine free real-bank tier
 (SEB Sweden currently appears as coming soon), Aritma and Finshark as additional
 API candidates, the actual SEB GCA tariff and bank-held approval queue, and the

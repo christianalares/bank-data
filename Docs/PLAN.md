@@ -128,3 +128,18 @@ The deeper pass records genuinely free services whose coverage/API scope fails
 this use case, additional candidates, and direct SEB costs. Preserve the user's
 Fortnox accountant workflow; no accounting migration or duplicate bookkeeping is
 part of the desired payment-initiation feature.
+
+### Authorized sandbox tests — 2026-10-11
+
+The user subsequently created an Open Payments account and requested tests with
+credentials saved locally. This extends the earlier research scope to synthetic
+sandbox API operations. Evidence and reproducible commands are in
+`OPEN-PAYMENTS-SANDBOX.md`; the standalone smoke script is
+`scripts/open-payments-sandbox-smoke.mjs`.
+
+Authentication, SEB discovery, giro creation, simulated approval and cancellation
+were exercised. The sandbox omits giro/reference fields on reads and returns
+`ACSP` even after two simulated approval failures, so production security
+acceptance remains unresolved. Live access, price, mandatory independent bank
+approval and the real iPhone journey still require confirmation. No production
+payment functionality, database or infrastructure change is included.
