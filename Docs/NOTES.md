@@ -39,6 +39,15 @@ and `bank-sync`.
 
 ## 2026-10-10: SEB company payment feasibility investigation
 
+Follow-up: the user requested costs and alternative payment APIs and ruled out
+browser automation. `PAYMENT-API-COMPARISON.md` records the public-source
+comparison, including provider minimums where published, SEB's separate partner
+integration fees, and unresolved low-volume quotes. A free test environment or
+licence-use statement is not evidence of free live payments. No vendors were
+contacted, no accounts created, and no production changes or payments initiated.
+Confirmed volume: 1–10 company invoices/month. Documentation validation:
+`git diff --check` and `pnpm check` passed (39 files checked).
+
 The user requested investigation of explicit MCP payments for mostly Swedish
 company invoices, with one authorized signer, and accepted bank approval for
 every payment. Invoice extraction stays with the assistant. Public primary

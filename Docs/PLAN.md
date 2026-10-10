@@ -119,3 +119,8 @@ flow require provider confirmation and later acceptance testing.
 Before any implementation, resolve those access and security requirements and
 agree a bounded implementation scope. Preserve the production database and use
 the existing backup/restore gate before any future schema or production change.
+
+Follow-up research compares provider costs and alternatives in
+`PAYMENT-API-COMPARISON.md`. No complete free production route is verified.
+Public prices, negotiated quotes, sandbox access and company-specific eligibility
+are distinguished; mandatory independent payment approval remains required.
