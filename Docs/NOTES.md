@@ -39,6 +39,16 @@ and `bank-sync`.
 
 ## 2026-10-10: SEB company payment feasibility investigation
 
+The deeper parallel research pass added YAXI's genuine free real-bank tier
+(SEB Sweden currently appears as coming soon), Aritma and Finshark as additional
+API candidates, the actual SEB GCA tariff and bank-held approval queue, and the
+2026 retirement of legacy direct Bankgiro supplier files. It inspected actual
+Dooer and accounting API schemas to separate payment records from initiation.
+The user clarified that their accountant uses Fortnox and they want to preserve
+their current pay-then-send-attachments workflow. No free API meeting all of
+these requirements was verified. Findings are consolidated in
+`PAYMENT-API-COMPARISON.md`; no provider contact or financial operation occurred.
+
 Follow-up: the user requested costs and alternative payment APIs and ruled out
 browser automation. `PAYMENT-API-COMPARISON.md` records the public-source
 comparison, including provider minimums where published, SEB's separate partner

@@ -124,3 +124,7 @@ Follow-up research compares provider costs and alternatives in
 `PAYMENT-API-COMPARISON.md`. No complete free production route is verified.
 Public prices, negotiated quotes, sandbox access and company-specific eligibility
 are distinguished; mandatory independent payment approval remains required.
+The deeper pass records genuinely free services whose coverage/API scope fails
+this use case, additional candidates, and direct SEB costs. Preserve the user's
+Fortnox accountant workflow; no accounting migration or duplicate bookkeeping is
+part of the desired payment-initiation feature.
