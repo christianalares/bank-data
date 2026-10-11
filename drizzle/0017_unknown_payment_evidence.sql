@@ -1,0 +1,1 @@
+ALTER TYPE "public"."bookkeeping_payment_state" ADD VALUE 'unknown' BEFORE 'unpaid';

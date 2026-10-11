@@ -100,11 +100,12 @@ the existing bank importer remains unchanged. Automatic Gmail ingestion,
 document extraction, matching decisions and payment initiation remain outside
 this information-layer extension.
 
-This entry records an architecture constraint, not an implemented feature or
-a production cutover. Bookkeeper OS's local CSV registers remain authoritative
-until reconciliation and an explicit verified cutover. Preserve the database,
-backup/restore gate and existing MCP read-only credentials when defining a
-bounded implementation and any separately authorized write scope.
+Christian subsequently authorized implementation, full confirmed-match backfill,
+commit/push and deployment to production. The implemented additive Drizzle/MCP
+extension is documented in `BOOKKEEPING.md`. Backup restoration, local migration,
+204 transaction reviews, 241 document records and 11 explicit invoice decisions
+have passed rehearsal; production acceptance is in progress. Preserve the local
+registers and evidence; reconcile subsequent explicit MCP changes with them.
 
 ## Source pointers
 

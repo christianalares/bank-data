@@ -44,6 +44,7 @@ export default defineRailway((context) => {
       ENABLE_BANKING_PRIVATE_KEY_BASE64: preserve(),
       MCP_ALLOWED_HOSTS: preserve(),
       MCP_ALL_BANKS_TOKEN: preserve(),
+      MCP_BOOKKEEPING_TOKEN: preserve(),
       MCP_API_TOKEN: preserve(),
       MCP_TRANSPORT: preserve(),
       PERSONAL_DATA_ENCRYPTION_KEY: preserve(),

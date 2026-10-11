@@ -7,6 +7,7 @@ import { getConsentToken } from '../banking/consent-service'
 import {
   getAllBanksToken,
   getBearerToken,
+  getBookkeepingToken,
   getRequiredApiToken,
   hashPersonalMcpToken,
   hasValidBearerToken,
@@ -22,6 +23,7 @@ export async function startHttpServer() {
   const port = getPort()
   const apiToken = getRequiredApiToken()
   const allBanksToken = getAllBanksToken(apiToken)
+  getBookkeepingToken(apiToken)
   const allowedHosts = getAllowedHosts(port)
   const allowedOrigins = getAllowedOrigins(port)
   const concurrencyLimiter = new ConcurrencyLimiter(getMaxConcurrentRequests())
@@ -208,6 +210,11 @@ async function resolveMcpAuth(
   businessToken: string,
   allBanksToken: string | null,
 ): Promise<FinanceMcpContext | null> {
+  const bookkeepingToken = getBookkeepingToken(businessToken)
+  if (bookkeepingToken && hasValidBearerToken(authorization, bookkeepingToken)) {
+    return { mode: 'bookkeeping' }
+  }
+
   const consentToken = process.env.BANK_CONSENT_MCP_TOKEN?.trim()
   if (consentToken && hasValidBearerToken(authorization, getConsentToken())) {
     return { mode: 'consent' }

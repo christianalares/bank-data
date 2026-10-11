@@ -53,3 +53,20 @@ export function hashPersonalMcpToken(token: string) {
 function hashToken(token: string) {
   return createHash('sha256').update(token).digest()
 }
+
+export function getBookkeepingToken(businessToken: string) {
+  const token = process.env.MCP_BOOKKEEPING_TOKEN?.trim()
+  if (!token) return null
+  if (token.length < 32)
+    throw new Error('MCP_BOOKKEEPING_TOKEN must contain at least 32 characters')
+  if (
+    [
+      businessToken,
+      process.env.MCP_ALL_BANKS_TOKEN?.trim(),
+      process.env.BANK_CONSENT_MCP_TOKEN?.trim(),
+    ].includes(token)
+  ) {
+    throw new Error('MCP_BOOKKEEPING_TOKEN must be distinct from other MCP tokens')
+  }
+  return token
+}

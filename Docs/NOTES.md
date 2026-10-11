@@ -1816,3 +1816,26 @@ redirect URL. The three earlier callback URLs remain allowed. The MCP service's
 `BANK_CONSENT_REDIRECT_ORIGIN` now points to the new domain; the resulting
 Railway deployment succeeded. No new consent was started. The old callback and
 domain remain available for in-flight authorizations and older clients.
+
+## 2026-10-11 Bookkeeping information layer
+
+Christian explicitly authorized building the Drizzle/MCP information layer,
+backfilling all existing matches, committing, pushing and deploying to production.
+The private production dump restored successfully into isolated PostgreSQL 18
+with 2,817 existing bank rows. Additive migrations 0016/0017 and a transactional
+backfill passed there: 204 reviews, 180 confirmed transactions, 241 unique document
+hashes, 216 confirmed document links, 34 historical export IDs without an invented
+bank row, and 11 explicitly reviewed invoice/payment obligations. All eight closed
+follow-up decisions are preserved. Repeating the import replayed all 456 operations
+without extra rows. Source digest:
+`0a2fefb87b464dfbc826ae389ca8653282c68cea0f6fe83a09c1898df7c41ab5`.
+
+43 tests passed (one existing optional test skipped), including restored-database
+checks for scheduling versus payment/matching, audit before/after records,
+idempotent replay, conflicting request IDs, stale revisions, required evidence,
+document reuse, exact business bank IDs/dates, private workspace rejection and
+complete pagination. Typechecks, Biome, Drizzle migration check, build and HTTP
+health/bearer/sync-entry smoke checks passed. Original bank and sync code are
+unchanged. A separate write credential is configured without exposing its value;
+existing tokens remain read-only. Production migrations applied successfully;
+import and deployed MCP acceptance follow below.
