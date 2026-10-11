@@ -104,7 +104,7 @@ Christian subsequently authorized implementation, full confirmed-match backfill,
 commit/push and deployment to production. The implemented additive Drizzle/MCP
 extension is documented in `BOOKKEEPING.md`. Backup restoration, local migration,
 204 transaction reviews, 241 document records and 11 explicit invoice decisions
-have passed rehearsal; production acceptance is in progress. Preserve the local
+have passed rehearsal and production acceptance. Deployment `beb026c7-3078-49d3-8170-ed674b3388cb` succeeded at commit `e993a22`; full remote MCP pagination, exact register comparison and write replay passed. Preserve the local
 registers and evidence; reconcile subsequent explicit MCP changes with them.
 
 ## Source pointers

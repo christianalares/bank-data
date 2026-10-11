@@ -1839,3 +1839,33 @@ health/bearer/sync-entry smoke checks passed. Original bank and sync code are
 unchanged. A separate write credential is configured without exposing its value;
 existing tokens remain read-only. Production migrations applied successfully;
 import and deployed MCP acceptance follow below.
+
+Production acceptance completed: migrations 0016/0017 applied, and all 456
+transactional import operations committed. Production contains 204 unique review
+keys, 180 confirmed transactions, 241 document hashes, 216 confirmed document
+links and 11 explicit invoice records. Every original CSV metadata field, date,
+closed decision and linked hash matched the private export. The restored and
+production databases share all 2,817 original bank IDs/internal IDs (aggregate
+ID digest `0d9857c6f6d6e0eed4db582f23f5ccf7`). The review digest is
+`298e77dcf586c7b15fade211666f89d4b821caff89de7ed0485bc8fb4ba40448`.
+
+Railway MCP deployment `beb026c7-3078-49d3-8170-ed674b3388cb` reached SUCCESS
+at commit `e993a22528e60216d82d045339ad5717e8e38f56`. Authenticated remote
+MCP traversed all transaction, document, invoice and history pages and compared
+every supplied source field. The all-bank catalog has seven read-only tools;
+the separate write catalog has four reads and three mutations. Replaying an
+initial invoice mutation returned replayed=true; stale revision was rejected,
+and audit count remained 456. No bank history, document content, Gmail labels,
+payment initiation or accounting uploads were changed by this release.
+
+Executor's allBanks catalog is refreshed and healthy. The new user-scoped
+`tools.bank_data.user.bookkeeping` connection uses an opaque file-provider
+credential reference stored locally, never in code or output. Actual Executor
+reads traversed 204 unique review rows in three pages, returned all eight closed
+records and the correct 11 independent payment states. Bookkeeper OS retains
+canonical local registers and sending evidence; AGENTS.md and automation memory
+now require current MCP payment evidence before sorting and audited reconciliation
+of future explicit register changes. Local integrity check remains zero errors.
+Acceptance report: `docs/metadata/bookkeeping-migrering-2026-10-11.json` in
+Bookkeeper OS. New operator verification scripts compare database and remote MCP
+records; private backup/import/credential files are outside the repository.

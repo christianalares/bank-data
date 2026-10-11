@@ -49,6 +49,10 @@ expectedRevision (0 to create) and appropriate evidence. Equal retries return th
 original outcome; reuse with different content and stale versions are rejected.
 Actor is declared provenance, not cryptographic proof of who reviewed a document.
 
+The deployed Executor write connection is `tools.bank_data.user.bookkeeping`.
+The existing `tools.bank_data.org.allBanks` remains read-only. No token value is
+committed or included in user-visible output.
+
 ## Backfill and routine use
 
 Export the canonical local registers with
@@ -78,3 +82,12 @@ actual deployed MCP tool catalog and read every import page, compare all exact
 keys/hashes/statuses with the local export, replay an identical mutation and
 check original bank IDs/counts remain unchanged. Store acceptance evidence in
 PLAN.md and NOTES.md and the Bookkeeper OS migration report.
+
+Production acceptance is complete for implementation commit `e993a22`.
+`scripts/verify-bookkeeping-import.ts` compares database records against the
+private export and produces only counts and integrity digests.
+`scripts/verify-bookkeeping-mcp.ts` reads every remote page, verifies read/write
+catalog isolation, replays one initial mutation and checks stale-version
+rejection. It receives endpoint, private variables file, private write-token file
+and private import file as positional arguments. Do not print those private
+file contents or run the database integration tests against production.
