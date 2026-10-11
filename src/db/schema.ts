@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -467,3 +468,118 @@ export namespace DatabaseTable {
   export type TrackerProject = z.infer<typeof trackerProjectSelectSchema>
   export type TimeEntry = z.infer<typeof timeEntrySelectSchema>
 }
+
+// Explicit bookkeeping decisions supplied by the operator/Codex. No inference.
+export const bookkeepingPaymentState = pgEnum('bookkeeping_payment_state', [
+  'unknown',
+  'unpaid',
+  'scheduled',
+  'paid',
+  'partially_paid',
+  'cancelled',
+  'refunded',
+])
+export const bookkeepingMatchingState = pgEnum('bookkeeping_matching_state', [
+  'unreviewed',
+  'review',
+  'confirmed',
+  'missing',
+  'accountant',
+])
+export const bookkeepingDocument = pgTable(
+  'bookkeeping_document',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id),
+    sha256: text('sha256').notNull(),
+    localPath: text('local_path').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    sourceReference: text('source_reference').notNull(),
+    sentStatus: text('sent_status').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, string>>().notNull(),
+    revision: integer('revision').notNull().default(1),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('bookkeeping_document_scope_hash_idx').on(t.workspaceId, t.sha256)],
+)
+
+export const bookkeepingTransaction = pgTable(
+  'bookkeeping_transaction',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id),
+    providerTransactionId: text('provider_transaction_id').notNull(),
+    bankTransactionId: uuid('bank_transaction_id').references(() => bankTransaction.id),
+    bankAliasIds: jsonb('bank_alias_ids').$type<string[]>().notNull(),
+    bankDate: date('bank_date').notNull(),
+    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+    currency: text('currency').notNull(),
+    description: text('description').notNull(),
+    matchingState: bookkeepingMatchingState('matching_state').notNull(),
+    documentHashes: jsonb('document_hashes').$type<string[]>().notNull(),
+    followupClosed: boolean('followup_closed').notNull().default(false),
+    evidence: jsonb('evidence').$type<Record<string, unknown>>().notNull(),
+    metadata: jsonb('metadata').$type<Record<string, string>>().notNull(),
+    revision: integer('revision').notNull().default(1),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('bookkeeping_transaction_scope_provider_idx').on(
+      t.workspaceId,
+      t.providerTransactionId,
+    ),
+    index('bookkeeping_transaction_bank_idx').on(t.workspaceId, t.bankTransactionId),
+  ],
+)
+
+export const bookkeepingInvoice = pgTable(
+  'bookkeeping_invoice',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id),
+    externalKey: text('external_key').notNull(),
+    vendor: text('vendor').notNull(),
+    invoiceNumber: text('invoice_number'),
+    ocr: text('ocr'),
+    bankgiro: text('bankgiro'),
+    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+    currency: text('currency').notNull(),
+    dueDate: date('due_date'),
+    paymentState: bookkeepingPaymentState('payment_state').notNull(),
+    paymentDate: date('payment_date'),
+    paymentEvidence: jsonb('payment_evidence').$type<Record<string, unknown>>(),
+    documentHashes: jsonb('document_hashes').$type<string[]>().notNull(),
+    transactionKeys: jsonb('transaction_keys').$type<string[]>().notNull(),
+    gmailReferences: jsonb('gmail_references')
+      .$type<{ account: string; messageId: string }[]>()
+      .notNull(),
+    revision: integer('revision').notNull().default(1),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('bookkeeping_invoice_scope_key_idx').on(t.workspaceId, t.externalKey)],
+)
+
+export const bookkeepingAudit = pgTable(
+  'bookkeeping_audit',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id),
+    requestId: text('request_id').notNull(),
+    requestHash: text('request_hash').notNull(),
+    entity: text('entity').notNull(),
+    entityKey: text('entity_key').notNull(),
+    actor: text('actor').notNull(),
+    before: jsonb('before').$type<Record<string, unknown>>(),
+    after: jsonb('after').$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('bookkeeping_audit_scope_request_idx').on(t.workspaceId, t.requestId)],
+)

@@ -14,6 +14,7 @@ import {
   recoverBankSelection,
   startBankConsent,
 } from '../banking/consent-service'
+import { registerBookkeepingTools } from '../bookkeeping/mcp'
 import { AllBankReadService } from '../finance/all-bank-service'
 import {
   allBankAccountsSchema,
@@ -44,12 +45,19 @@ const mutationAnnotations = {
 } as const
 
 export type FinanceMcpContext =
+  | { mode: 'bookkeeping' }
   | { mode: 'business' }
   | { mode: 'all-banks' }
   | { mode: 'personal'; workspaceId: string; tokenId: string }
   | { mode: 'consent' }
 
 export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'business' }) {
+  if (context.mode === 'bookkeeping') {
+    const server = new McpServer({ name: 'bank-data-bookkeeping', version: '0.1.0' })
+    registerBookkeepingTools(server, true)
+    return server
+  }
+
   if (context.mode === 'consent') {
     return createBankConsentMcpServer()
   }
@@ -61,6 +69,7 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
   if (context.mode === 'all-banks') {
     const server = new McpServer({ name: 'bank-data-all-banks', version: '0.1.0' })
     registerAllBankReadTools(server)
+    registerBookkeepingTools(server)
     return server
   }
 
@@ -69,6 +78,7 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
     version: '0.2.0',
   })
   registerBankReadTools(server, context)
+  registerBookkeepingTools(server)
 
   return server
 }

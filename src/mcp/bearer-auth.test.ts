@@ -3,16 +3,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   getAllBanksToken,
   getBearerToken,
+  getBookkeepingToken,
   getRequiredApiToken,
   hashPersonalMcpToken,
   hasValidBearerToken,
 } from './bearer-auth'
 
 const VALID_TOKEN = '0123456789abcdef0123456789abcdef'
+const originalBookkeepingToken = process.env.MCP_BOOKKEEPING_TOKEN
+const originalConsentToken = process.env.BANK_CONSENT_MCP_TOKEN
 const originalToken = process.env.MCP_API_TOKEN
 const originalAllBanksToken = process.env.MCP_ALL_BANKS_TOKEN
 
 afterEach(() => {
+  for (const [name, value] of [
+    ['MCP_BOOKKEEPING_TOKEN', originalBookkeepingToken],
+    ['BANK_CONSENT_MCP_TOKEN', originalConsentToken],
+  ] as const) {
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+  }
   if (originalAllBanksToken === undefined) {
     delete process.env.MCP_ALL_BANKS_TOKEN
   } else {
@@ -27,6 +37,24 @@ afterEach(() => {
 })
 
 describe('bearer authentication', () => {
+  it('requires a separate write token from all read and consent credentials', () => {
+    delete process.env.MCP_BOOKKEEPING_TOKEN
+    expect(getBookkeepingToken(VALID_TOKEN)).toBeNull()
+    process.env.MCP_BOOKKEEPING_TOKEN = 'short'
+    expect(() => getBookkeepingToken(VALID_TOKEN)).toThrow('at least 32')
+    process.env.MCP_BOOKKEEPING_TOKEN = VALID_TOKEN
+    expect(() => getBookkeepingToken(VALID_TOKEN)).toThrow('distinct')
+    const writeToken = 'a'.repeat(64)
+    process.env.MCP_BOOKKEEPING_TOKEN = writeToken
+    process.env.MCP_ALL_BANKS_TOKEN = writeToken
+    expect(() => getBookkeepingToken(VALID_TOKEN)).toThrow('distinct')
+    delete process.env.MCP_ALL_BANKS_TOKEN
+    process.env.BANK_CONSENT_MCP_TOKEN = writeToken
+    expect(() => getBookkeepingToken(VALID_TOKEN)).toThrow('distinct')
+    delete process.env.BANK_CONSENT_MCP_TOKEN
+    expect(getBookkeepingToken(VALID_TOKEN)).toBe(writeToken)
+  })
+
   it('accepts an exact bearer token', () => {
     expect(hasValidBearerToken(`Bearer ${VALID_TOKEN}`, VALID_TOKEN)).toBe(true)
   })
