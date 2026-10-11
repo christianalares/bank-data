@@ -1,5 +1,20 @@
 # Migration notes and handoff
 
+## 2026-10-11 information-layer responsibility decision
+
+Christian explicitly requires Railway/Bank Data to remain an information store
+and MCP interface. Codex owns interpretation, matching decisions and assessment
+of payment evidence through chat. Any future Drizzle invoice/payment register
+persists supplied facts, decisions, evidence and history; it must not introduce
+AI, OCR, classification, matching heuristics or payment-state inference.
+Deterministic authorization, validation, integrity and idempotency remain in
+the service. Existing bank sync may continue. A transaction UI is deferred.
+
+Recorded in AGENTS.md and PLAN.md, with the same boundary in Bookkeeper OS's
+AGENTS.md. This is a documentation-only change. No schema, production data,
+MCP tool, infrastructure or payment functionality has changed. Bookkeeper OS's
+local CSV registers remain authoritative until a later verified cutover.
+
 Updated: 2026-10-05 07:33 UTC. Branch: `codex/bank-mcp-migration`.
 
 ## October 5 unattended bank sync and final migration check

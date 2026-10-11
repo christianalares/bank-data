@@ -84,6 +84,28 @@ can inspect.
 - Rebuilding the database from provider history. Enable Banking history can be
   limited after authorization, so the existing database is the archive.
 
+## Invoice and payment information layer — 2026-10-11
+
+Christian proposed storing invoice, payment and matching state in Bank Data,
+using its existing Drizzle structure and MCP as the initial chat interface.
+A transaction UI is deferred. He explicitly requires that all intelligence
+remain with Codex: Railway must not perform AI extraction, classification,
+matching heuristics or payment-state inference.
+
+The proposed extension would persist explicit invoice records, separate
+payment and matching states, source references, evidence and change history.
+MCP would read or record those supplied decisions. Deterministic validation,
+authorization, integrity and idempotency remain server responsibilities;
+the existing bank importer remains unchanged. Automatic Gmail ingestion,
+document extraction, matching decisions and payment initiation remain outside
+this information-layer extension.
+
+This entry records an architecture constraint, not an implemented feature or
+a production cutover. Bookkeeper OS's local CSV registers remain authoritative
+until reconciliation and an explicit verified cutover. Preserve the database,
+backup/restore gate and existing MCP read-only credentials when defining a
+bounded implementation and any separately authorized write scope.
+
 ## Source pointers
 
 - Current MCP: `src/mcp/`, `railway.mcp.toml`.
