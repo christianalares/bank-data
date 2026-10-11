@@ -1,5 +1,24 @@
 # Agent Instructions
 
+## Information layer boundary
+
+Railway/Bank Data is an information store and MCP interface. Keep all AI, OCR, document interpretation,
+classification, matching heuristics, and payment-status inference outside this
+service. Codex performs that reasoning through chat and supplies explicit
+records, evidence, and status changes through MCP.
+
+Use the existing Drizzle schema and migrations for any future invoice/payment
+register. Keep payment state separate from transaction matching. Deterministic
+validation, authorization, referential integrity, idempotency, and audit history
+belong in this service; existing bank import and sync may continue. Never mark a
+payment or match confirmed merely because a name or amount resembles a record.
+
+A transaction UI is deferred. Chat and MCP are the first interface. This
+architecture decision alone does not authorize production migrations or payment
+initiation. The local accounting registers remain authoritative until an
+explicit, verified cutover; do not treat legacy attachment links as current
+matching evidence without reconciliation.
+
 ## Non-Interactive Shell Commands
 
 Always use non-interactive flags with file operations to avoid confirmation prompts.
