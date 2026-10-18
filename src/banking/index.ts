@@ -100,26 +100,46 @@ export type NormalizedEnableBankingTransaction = {
 // API client
 // ─────────────────────────────────────────────────────────────────────────────
 
+export class EnableBankingRequestError extends Error {
+  constructor(
+    message: string,
+    readonly transient: boolean,
+  ) {
+    super(message)
+    this.name = 'EnableBankingRequestError'
+  }
+}
+
 export async function enableBankingRequest<TResponse>(
   path: string,
   options: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {},
 ): Promise<TResponse> {
+  const requestOptions: RequestInit = {
+    method: options.method ?? 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${createEnableBankingJwt()}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: AbortSignal.timeout(options.timeoutMs ?? ENABLE_BANKING_REQUEST_TIMEOUT_MS),
+  }
   let response: Response
 
   try {
-    response = await fetch(`https://api.enablebanking.com${path}`, {
-      method: options.method ?? 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${createEnableBankingJwt()}`,
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: AbortSignal.timeout(options.timeoutMs ?? ENABLE_BANKING_REQUEST_TIMEOUT_MS),
-    })
+    response = await fetch(`https://api.enablebanking.com${path}`, requestOptions)
   } catch (error) {
     if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      throw new Error('Enable Banking did not respond in time. Please try again.')
+      throw new EnableBankingRequestError(
+        'Enable Banking did not respond in time. Please try again.',
+        true,
+      )
+    }
+    if (error instanceof TypeError) {
+      throw new EnableBankingRequestError(
+        'Enable Banking could not be reached. Please try again.',
+        true,
+      )
     }
 
     throw error
@@ -127,7 +147,22 @@ export async function enableBankingRequest<TResponse>(
 
   if (!response.ok) {
     const responseText = await response.text()
-    throw new Error(`Enable Banking request failed (${response.status}): ${responseText}`)
+    let providerCode: unknown = null
+    try {
+      const body = JSON.parse(responseText) as { error?: unknown } | null
+      providerCode = body?.error
+    } catch {
+      // Error bodies may be plain text.
+    }
+    const transient =
+      response.status === 429 ||
+      response.status >= 500 ||
+      providerCode === 'ASPSP_ERROR' ||
+      providerCode === 'ASPSP_RATE_LIMIT_EXCEEDED'
+    throw new EnableBankingRequestError(
+      `Enable Banking request failed (${response.status}): ${responseText}`,
+      transient,
+    )
   }
 
   return response.json() as Promise<TResponse>

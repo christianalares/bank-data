@@ -1,5 +1,34 @@
 # Migration notes and handoff
 
+## 2026-10-18: expected bank outages must not crash the cron deployment
+
+The October 18 `bank-sync` run failed at 02:04 UTC because Enable Banking's
+Nordea integration returned HTTP 400 with `ASPSP_ERROR` and an internal server
+error. Deployment `8ca65521-819a-40ec-ba23-b17a49d58fde` therefore became
+`CRASHED`. Read-only production inspection confirmed that SEB and Revolut synced
+successfully in the same run; Nordea retained its October 17 successful sync time
+and unexpired consent. MCP health returned HTTP 200, and Postgres was running.
+
+The user requested that this handled upstream failure not crash the deployment.
+The provider client now distinguishes temporary HTTP failures, ASPSP errors,
+rate limits, network failures and timeouts from local configuration or unexpected
+errors. The sync returns `status: partial`, failed connection details and normal
+completion for expected bank failures, including an active rate-limit backoff.
+It retains connection errors and freshness, continues other connections and
+retries eligible connections on the next scheduled run. Fatal database,
+configuration and data-integrity errors still reject the run. Consent failures
+remain disconnected and visible in the result. No database schema, stored bank
+data, consent or Railway configuration is changed by this patch.
+
+Focused tests exercise the actual provider client and full sync loop with fake
+HTTP responses and an in-memory database stub, including the exact Nordea error,
+successful processing of another bank, all banks unavailable, rate limiting and
+backoff, recovery, consent expiry and fatal errors. `pnpm check`, `pnpm typecheck`,
+`pnpm test` (51 passed, four optional database integration tests skipped),
+`pnpm build:server`, `pnpm test:smoke` and `git diff --check` passed. Production
+rollout is pending the source push; the provider failure was reproduced locally
+without making a live bank request or changing production data.
+
 ## 2026-10-11 information-layer responsibility decision
 
 Christian explicitly requires Railway/Bank Data to remain an information store

@@ -3,6 +3,7 @@ import {
   createEnableBankingInternalId,
   ENABLE_BANKING_NO_ACCOUNTS_ERROR,
   type EnableBankingAccount,
+  EnableBankingRequestError,
   getEnableBankingAccountBalances,
   getEnableBankingAccountName,
   getEnableBankingSessionAccounts,
@@ -99,15 +100,17 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
   let bookingDateDrifts = 0
   let lastSuccessAt: string | null = null
   let deferredConnections = 0
-  const transientFailures: { connectionId: string; message: string }[] = []
+  const failures: { connectionId: string; status: 'error' | 'disconnected'; message: string }[] = []
+  const fatalFailures: { connectionId: string; message: string }[] = []
 
   for (const connection of connections) {
     if (!payload.accountId && shouldDeferBackgroundSync(connection, startedAt)) {
       deferredConnections += 1
       console.info('Deferred recent background bank fetch', { connectionId: connection.id })
       if (connection.status === 'error') {
-        transientFailures.push({
+        failures.push({
           connectionId: connection.id,
+          status: 'error',
           message: 'ASPSP background-fetch limit remains active',
         })
       }
@@ -148,24 +151,31 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
         })
         .where(eq(bankConnection.id, connection.id))
 
-      // Consent failures need a human to re-authorize; retrying is pointless.
-      // Transient failures should surface as a failed run (alerting + retries).
-      if (status === 'error') {
-        transientFailures.push({ connectionId: connection.id, message })
+      failures.push({ connectionId: connection.id, status, message })
+      // Handled bank outages leave a partial result for the next scheduled run.
+      // Database, configuration, and data-integrity errors still fail the job.
+      if (
+        status === 'error' &&
+        !(caughtError instanceof EnableBankingRequestError && caughtError.transient)
+      ) {
+        fatalFailures.push({ connectionId: connection.id, message })
       }
     }
   }
 
-  if (transientFailures.length > 0) {
+  if (fatalFailures.length > 0) {
     throw new Error(
-      `Enable Banking sync failed for ${transientFailures.length} connection(s): ${transientFailures
+      `Enable Banking sync failed for ${fatalFailures.length} connection(s): ${fatalFailures
         .map((failure) => `${failure.connectionId} (${failure.message})`)
         .join('; ')}`,
     )
   }
 
   return {
+    status: failures.length > 0 ? ('partial' as const) : ('success' as const),
     syncedConnections,
+    failedConnections: failures.length,
+    failures,
     deferredConnections,
     syncedAccounts,
     syncedTransactions,
@@ -644,6 +654,7 @@ export async function retryProvider<T>(operation: () => Promise<T>): Promise<T> 
       // The bank's background-fetch cap will not clear during an immediate
       // retry. Enable Banking recommends waiting six hours for this error.
       if (
+        (error instanceof EnableBankingRequestError && !error.transient) ||
         isConsentFailure(message) ||
         isRateLimitFailure(message) ||
         attempt >= PROVIDER_ATTEMPTS

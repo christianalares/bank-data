@@ -3,6 +3,7 @@ import { generateKeyPairSync } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  EnableBankingRequestError,
   enableBankingRequest,
   getEnableBankingTransactions,
   normalizeEnableBankingTransaction,
@@ -162,12 +163,32 @@ describe('getEnableBankingTransactions', () => {
     const fetchMock = vi.fn().mockRejectedValue(timeoutError)
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(enableBankingRequest('/auth', { timeoutMs: 25 })).rejects.toThrow(
-      'Enable Banking did not respond in time. Please try again.',
-    )
+    await expect(enableBankingRequest('/auth', { timeoutMs: 25 })).rejects.toMatchObject({
+      name: 'EnableBankingRequestError',
+      message: 'Enable Banking did not respond in time. Please try again.',
+      transient: true,
+    })
 
     const requestOptions = fetchMock.mock.calls[0]?.[1] as RequestInit
     expect(requestOptions.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('distinguishes provider network failures from local credential errors', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(enableBankingRequest('/accounts/test/balances')).rejects.toBeInstanceOf(
+      EnableBankingRequestError,
+    )
+    await expect(enableBankingRequest('/accounts/test/balances')).rejects.toMatchObject({
+      transient: true,
+    })
+
+    delete process.env.ENABLE_BANKING_APPLICATION_ID
+    await expect(enableBankingRequest('/accounts/test/balances')).rejects.not.toBeInstanceOf(
+      EnableBankingRequestError,
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
 

@@ -2,6 +2,16 @@
 
 Status: migration complete. Working branch: `codex/bank-mcp-migration`.
 
+## Post-migration sync resilience — 2026-10-18
+
+In progress: temporary provider outages and bank rate limits produce a structured
+`partial` sync result and normal process completion. Failed connections keep their
+error and previous successful sync time, remain eligible for the next scheduled
+run, and do not prevent other banks from syncing. Database, configuration and
+data-integrity errors still fail the process. Consent failures remain disconnected
+and are included in the partial result. No schema or infrastructure change is
+required. Acceptance evidence and deployment status are tracked in `NOTES.md`.
+
 ## Goal
 
 Keep a small, reliable, read-only bank data service. Bank Data retains its
