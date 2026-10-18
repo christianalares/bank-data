@@ -25,9 +25,17 @@ HTTP responses and an in-memory database stub, including the exact Nordea error,
 successful processing of another bank, all banks unavailable, rate limiting and
 backoff, recovery, consent expiry and fatal errors. `pnpm check`, `pnpm typecheck`,
 `pnpm test` (51 passed, four optional database integration tests skipped),
-`pnpm build:server`, `pnpm test:smoke` and `git diff --check` passed. Production
-rollout is pending the source push; the provider failure was reproduced locally
-without making a live bank request or changing production data.
+`pnpm build:server`, `pnpm test:smoke` and `git diff --check` passed. The provider
+failure was reproduced locally without making a live bank request or changing
+production data.
+
+Source commit `8645c5b` was committed, pulled with rebase and pushed. Railway
+reported `SUCCESS` for bank-sync deployment
+`21394605-d766-4741-961f-0c0c4c0c354f` and MCP deployment
+`5a804b5f-110e-4301-9b5c-21bc059de9f6` at 06:42 UTC. MCP health returned HTTP 200
+after rollout. The cron image is deployed without a runtime execution; its next
+scheduled run is October 19 at 02:00 UTC (04:00 Stockholm). No live recovery or
+provider-failure run is claimed by this deployment check.
 
 ## 2026-10-11 information-layer responsibility decision
 

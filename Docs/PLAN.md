@@ -4,13 +4,15 @@ Status: migration complete. Working branch: `codex/bank-mcp-migration`.
 
 ## Post-migration sync resilience — 2026-10-18
 
-In progress: temporary provider outages and bank rate limits produce a structured
+Done: temporary provider outages and bank rate limits produce a structured
 `partial` sync result and normal process completion. Failed connections keep their
 error and previous successful sync time, remain eligible for the next scheduled
 run, and do not prevent other banks from syncing. Database, configuration and
 data-integrity errors still fail the process. Consent failures remain disconnected
 and are included in the partial result. No schema or infrastructure change is
-required. Acceptance evidence and deployment status are tracked in `NOTES.md`.
+required. Source commit `8645c5b` passed local validation and both Railway services
+deployed successfully. Live outage handling awaits a future scheduled provider
+failure; the exact Nordea response passed the local regression test. See `NOTES.md`.
 
 ## Goal
 
