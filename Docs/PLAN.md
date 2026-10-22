@@ -16,8 +16,11 @@ this project's credentials after Railway's October 21 security disclosure.
   `MCP_ALL_BANKS_TOKEN`, `MCP_BOOKKEEPING_TOKEN`, `BANK_CONSENT_MCP_TOKEN`, and
   `BANK_CONSENT_COOKIE_SECRET`. The first MCP and bank-sync redeployments failed
   at `BUILD_IMAGE` without logs. MCP retry `7789828f-4163-4bfc-bdbd-9c678e7ba4af`
-  also failed. Old runtime bearer credentials still authenticate; saving
-  variables is not evidence that their old values have been revoked.
+  also failed. A later MCP deployment `c7daa8bf-c820-47ad-90c5-cd868d06a26e`
+  remains queued at 10:45 UTC; follow it without adding a duplicate. Old runtime
+  bearer credentials still authenticate, the new token is rejected, and an
+  authenticated bank-account read fails. Saving variables is not evidence that
+  their old values have been revoked.
 - Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,642 stored
   payloads, and rebuild 11,635 blind search tokens atomically. Every plaintext
   payload and other bank column survived the isolated rehearsal exactly.
@@ -31,8 +34,10 @@ this project's credentials after Railway's October 21 security disclosure.
   RSA-4096 key passed both a local signature check and authenticated provider
   verification. The app is active in restricted mode, and all six linked-account
   entries across SEB business, Nordea personal, and Revolut personal match the
-  old application. The two provider variables are staged only, with no
-  destructive changes. The new key receives `SESSION_DOES_NOT_EXIST` for an
+  old application. The two provider variables are now saved in live Railway
+  configuration, with no staged changes remaining; runtime rollout is pending.
+  Keep bank-sync on hold until consents are renewed. The new key receives
+  `SESSION_DOES_NOT_EXIST` for an
   existing old-app session; application consents still require renewal. The user
   chose to wait for Railway rather than use a local callback. The unsaved edit
   was discarded, no localhost callback is registered, and the local helper is

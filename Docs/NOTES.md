@@ -2,6 +2,21 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+Recovery check at 10:45 UTC: MCP deployment
+`c7daa8bf-c820-47ad-90c5-cd868d06a26e`, created at 10:39 UTC, is `QUEUED`
+with no build or runtime logs. Follow this deployment without adding a duplicate.
+The provider patch is no longer staged: a fresh private CLI read verifies the
+new Enable Banking application in saved live variables, all five prepared
+MCP/consent replacements, and the unchanged production encryption key. This
+supersedes the staging statements below; deployment is still pending. Runtime
+probes accept the old ALL_BANKS token (200), reject the new one (401), and return
+an MCP tool error on an authenticated bank-account read. Rotation is not active.
+Railway's 10:15 UTC public update still reports elevated build failures and long
+queues. The recovery heartbeat now follows this deployment and saved provider
+configuration. Keep bank-sync on hold until normal consent renewal is verified;
+new-provider sync must not invalidate old-app sessions. Private evidence:
+`recovery-check-1045.json` in the incident directory.
+
 Latest handoff: the user chose **Wait for Railway instead** and did not approve
 the local callback. The unsaved editor change was discarded. A fresh signed
 `GET /application` verified the new app remains active with only
