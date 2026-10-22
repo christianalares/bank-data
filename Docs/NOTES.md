@@ -66,8 +66,9 @@ Both credential deployments still report `BUILDING` and no build log entries.
 Railway's incident status reports delayed deployments/build availability.
 A direct runtime probe returns health HTTP 200, old all-bank token HTTP 200,
 and replacement all-bank token HTTP 401. Thus runtime revocation has **not**
-happened. Health does not exercise Postgres; bank reads may fail while the old
-process still has the rejected database password. The queued deploys must reach
+happened. Health does not exercise Postgres; a direct authenticated
+`list_bank_accounts` call returned a tool error while the old process still has
+the rejected database password. The queued deploys must reach
 `SUCCESS`, then authenticated bank reads must pass before acceptance.
 
 Executor still has `tools.bank_data.org.allBanks` and
