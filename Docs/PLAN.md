@@ -25,10 +25,11 @@ this project's credentials after Railway's October 21 security disclosure.
 - Pending: replace the two saved Executor credentials without changing their
   scope/addresses; refresh and verify real bank reads and bookkeeping boundaries.
 - Pending: Enable Banking signing-key replacement and old-key revocation. The
-  existing application editor has no key/certificate field. A replacement
-  RSA-4096 key, public certificate, and unsent support request are prepared
-  privately. Do not delete/recreate the production application or bank consents
-  merely to obtain another key.
+  user chose a fresh application instead of contacting support. Its production
+  registration form is prepared in the existing account, using browser key
+  generation and the canonical Bank Data callback; registration/key download
+  await the user. Relink accounts, renew consents, and verify history continuity
+  before retiring the old application. No provider change is complete yet.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side
   revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private

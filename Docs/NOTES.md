@@ -119,6 +119,18 @@ application's signing key. Do not invent an update endpoint or delete the
 application/consents to work around this. No provider credential has been
 changed or revoked yet.
 
+The user subsequently chose a fresh application rather than the support route.
+The new production form is prepared in the same account with name `Bank Data`,
+the canonical `https://bank-data-mcp.up.railway.app/banking/callback`, and existing
+description/contact/policy metadata. Browser key generation/export is selected.
+Registration and downloading its new `.pem` await the user because browser
+credential generation/saving requires handoff. Do not use the separately
+generated local support-route key for this browser-generated application.
+The old application remains active. After registration, save the downloaded key
+privately, verify the matching app ID/public key, link the user's accounts to the
+new restricted app, and coordinate the provider variables, new bank consents,
+history reconciliation, and old-app/key revocation. No support message was sent.
+
 Prepared privately: `enable-banking-new-private.pem` (RSA-4096),
 `enable-banking-new-public.pem` (public certificate), and
 `enable-banking-support-request.txt`. The request is **unsent**, addressed to
