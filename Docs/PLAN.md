@@ -26,8 +26,9 @@ this project's credentials after Railway's October 21 security disclosure.
   payload and other bank column survived the isolated rehearsal exactly.
   Production uses the old encryption key until a coordinated maintenance and
   deployment window is possible. Do not change the variable by itself.
-- Pending: replace the two saved Executor credentials without changing their
-  scope/addresses; refresh and verify real bank reads and bookkeeping boundaries.
+- Verified on follow-up: Executor's current `bank-data` allBanks account read
+  returns five account groups, and its bookkeeping transaction read succeeds.
+  Client access works; the earlier pending-credential statement is superseded.
 - Pending: Enable Banking signing-key replacement and old-key revocation. The
   user chose a fresh application instead of contacting support. Its production
   app `324845c7-f648-48bf-a920-96d6a16b6291` is registered and its downloaded
@@ -44,6 +45,10 @@ this project's credentials after Railway's October 21 security disclosure.
   stopped. The recovery monitor is paused after successful deployment, token
   rejection, and actual bank-read checks. Normal consent renewal can resume.
   Verify history continuity before retiring the old application.
+  A fresh follow-up session check returns 404 `SESSION_DOES_NOT_EXIST` for all
+  three stored SEB, Nordea, and Revolut sessions with the new application key.
+  Bank-sync's latest intended deployment remains `FAILED`; stored-data reads
+  alone do not establish working fresh imports.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side
   revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private

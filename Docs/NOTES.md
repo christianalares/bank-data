@@ -2,6 +2,21 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+Follow-up after the user asked whether everything already works: current
+Executor `bank-data` calls succeed through allBanks account
+`acc_4c53ba44-f6f9-462c-be44-f6d740925eba` (five selected account groups) and
+bookkeeping account `acc_7c7158e0-05e2-4083-a171-3f4115f33816` (bounded read,
+one record). No credential or connection changes were made during this check.
+This supersedes the earlier statement that Executor access still awaits updates.
+A read-only DB query plus signed provider GETs found all three stored bank
+sessions still return 404 `SESSION_DOES_NOT_EXIST` under the new application key.
+Their stored status remains `connected`, with update times around 00:03 UTC;
+no consent or connection state was changed. MCP and Postgres are `SUCCESS`,
+while bank-sync's latest intended deployment is still `FAILED`. Stored MCP and
+Executor reads work, but fresh bank imports and full key rotation are not yet
+accepted. The prior bank authentication flows whitelisted accounts for the new
+application; Bank Data's actual provider sessions still need renewal.
+
 Recovery accepted at 11:33 UTC: MCP deployment
 `c7daa8bf-c820-47ad-90c5-cd868d06a26e` reached `SUCCESS` at 11:23 UTC.
 Independent initialization probes accept all four prepared bearer tokens (200)
