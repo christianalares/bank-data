@@ -2,6 +2,42 @@
 
 Status: migration complete. Working branch: `codex/bank-mcp-migration`.
 
+## Incident credential rotation — 2026-10-22
+
+In progress; **not fully rotated or accepted**. The user authorized rotation of
+this project's credentials after Railway's October 21 security disclosure.
+
+- Done: fresh production dump and successful isolated PostgreSQL 18 restore;
+  2,870 transactions, 11 accounts, three connections, and 18 migrations verified.
+- Done: the user regenerated the Postgres password through Railway's supported
+  database control. New authentication succeeds and old authentication fails.
+  Both application services already reference `Postgres.DATABASE_URL`.
+- Configured, awaiting deployment: independent replacements for `MCP_API_TOKEN`,
+  `MCP_ALL_BANKS_TOKEN`, `MCP_BOOKKEEPING_TOKEN`, `BANK_CONSENT_MCP_TOKEN`, and
+  `BANK_CONSENT_COOKIE_SECRET`. MCP and bank-sync redeployments remain `BUILDING`
+  without build logs. Old runtime bearer credentials still authenticate; saving
+  variables is not evidence that their old values have been revoked.
+- Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,642 stored
+  payloads, and rebuild 11,635 blind search tokens atomically. Every plaintext
+  payload and other bank column survived the isolated rehearsal exactly.
+  Production uses the old encryption key until a coordinated maintenance and
+  deployment window is possible. Do not change the variable by itself.
+- Pending: replace the two saved Executor credentials without changing their
+  scope/addresses; refresh and verify real bank reads and bookkeeping boundaries.
+- Pending: Enable Banking signing-key replacement and old-key revocation. The
+  existing application editor has no key/certificate field. A replacement
+  RSA-4096 key, public certificate, and unsent support request are prepared
+  privately. Do not delete/recreate the production application or bank consents
+  merely to obtain another key.
+- Pending: verify GitHub reconnection if needed after Railway's reset; review
+  historical credentials from retired services for outstanding provider-side
+  revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private
+  registry credential was found in this environment's three live services.
+
+See `NOTES.md` for the exact deployment IDs, private recovery paths, and
+acceptance gates. No production schema, bank history, consent, or payment state
+has been changed by this incident work.
+
 ## Post-migration sync resilience — 2026-10-18
 
 Done: temporary provider outages and bank rate limits produce a structured

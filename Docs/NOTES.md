@@ -1,5 +1,147 @@
 # Migration notes and handoff
 
+## 2026-10-22: Railway incident credential rotation in progress
+
+The user requested rotation of this project's keys after Railway's October 21
+security disclosure. This is separate from migration acceptance; rotation is
+**incomplete** while application deployments and upstream/client changes wait.
+The current live scope is project `c6c36c86-d6c0-4c07-b181-d903db2e3b7b`, production
+`b9e7fc05-5205-4f40-be2d-f6e160aa2d18`, and its existing Postgres, MCP, and bank-sync
+services. There are no live buckets or other environments. The live variable
+inventory contains no Redis, AI provider, GoCardless, Google OAuth, bucket, or
+private registry secret. The ignored local `.env` has only Open Payments sandbox
+credentials; these were not present in the live Railway variable inventory.
+Historical/deleted service variables and upstream revocation remain a separate
+follow-up; absence from today's live environment does not prove revocation.
+
+### Recovery and database password
+
+Private incident material is outside Git at
+`/Users/christian/.local/share/bank-data/incident-2026-10-22` (directory mode 0700;
+credential/backup files mode 0600). It includes before/after service variable
+snapshots, a 4,435,028-byte custom-format `pre-rotation.dump`, independently
+generated replacements, verification reports, and the one-time `rekey.mjs`.
+Treat all these files as sensitive. Do not paste them into chat, commit them,
+or delete the old encryption key while retained encrypted backups still need it.
+
+The dump restored successfully into a separate PostgreSQL 18.6 cluster using a
+private Unix socket only (no TCP listener), in `restore-cluster` and
+`restore-socket`, port 55483, database/user `rotation_verify`. The restored counts
+are 2,870 transactions, 11 accounts, three connections, and 18 Drizzle migrations.
+Production was never replaced by the restore. Stop that local cluster after
+rehearsal; its files are retained for this incident's recovery evidence.
+
+The user confirmed regenerating the Postgres password in Railway's Database →
+Config control. Postgres deployment `bb0e7628-2319-4d3d-926f-df37fb6294cd` reached
+`SUCCESS`. Fresh independent connections verify that the new password works
+and the old password is rejected. The database service/volume and their IDs are
+preserved. MCP's unrendered `DATABASE_URL` is `${{Postgres.DATABASE_URL}}`; bank-sync
+uses the same reference through the existing IaC. Both rendered URLs now contain
+the new password. No manual `ALTER USER` or one-sided password variable edit ran.
+
+Read-only checks found the existing 2,870/11/3 bank rows, four unrevoked hashed
+personal MCP tokens, one login role (`postgres`), and only `plpgsql` installed.
+The retained legacy account row has no OAuth access/refresh token. A bounded
+Postgres log search returned two authentication-failure entries, including this
+session's deliberate old-password check; this is not a complete forensic audit.
+Do not claim that misuse or data exposure has been ruled out.
+
+### Application credentials and deployments
+
+Five independent random 256-bit replacements were written through Railway MCP
+with deploys skipped, then read back privately and verified:
+`MCP_API_TOKEN`, `MCP_ALL_BANKS_TOKEN`, `MCP_BOOKKEEPING_TOKEN`,
+`BANK_CONSENT_MCP_TOKEN`, and `BANK_CONSENT_COOKIE_SECRET`.
+`PERSONAL_DATA_ENCRYPTION_KEY` has deliberately not changed in production.
+
+Follow these existing deployments; do not keep queueing duplicates:
+
+- MCP: `a55e508c-de31-424d-a496-f0c2891575a7`.
+- bank-sync: `6ddf7d05-fa1d-4234-b0da-17ea3bf03640`.
+- Earlier MCP redeploy used to test platform availability:
+  `0da7f1ae-7ee1-48a9-b16e-2c20b79ff3a5`; it has the old credential snapshot and
+  must not be mistaken for the rotation deployment.
+
+Both credential deployments still report `BUILDING` and no build log entries.
+Railway's incident status reports delayed deployments/build availability.
+A direct runtime probe returns health HTTP 200, old all-bank token HTTP 200,
+and replacement all-bank token HTTP 401. Thus runtime revocation has **not**
+happened. Health does not exercise Postgres; bank reads may fail while the old
+process still has the rejected database password. The queued deploys must reach
+`SUCCESS`, then authenticated bank reads must pass before acceptance.
+
+Executor still has `tools.bank_data.org.allBanks` and
+`tools.bank_data.user.bookkeeping`, both backed by the file credential provider.
+Neither saved credential has been changed. Their replacement token-only files
+are `allBanks-token.txt` and `bookkeeping-token.txt` in the private incident
+directory. Browser credential entry requires a user handoff; Executor's exposed
+tools support connection creation handoffs, not editing an existing secret.
+The integration is `http://localhost:4789/integrations/bank_data`. Avoid replacing
+these connections with different names/scopes or silently widening access.
+Refresh both after replacement and verify a real read through each intended
+scope. Validate old bearer tokens are rejected through both current and legacy
+Railway domains; rotating the cookie secret should invalidate old consent cookies.
+
+### Encryption rehearsal and remaining cutover
+
+The private `rekey.mjs` successfully dry-ran against the restored database and
+production, and applied only to the isolated restore. It uses the existing
+`v1` AES-256-GCM envelope and changes no schema. All 2,633 transaction, seven
+account, and two connection ciphertexts re-encrypted correctly. It verified that
+the old 11,635 blind search tokens exactly matched decrypted text before
+rebuilding them with the new HMAC key. Within the same transaction it compared
+digests of every decrypted payload and every other bank column, row counts, and
+the complete replacement search-token set; all matched. It uses exclusive table
+locks, conditional ciphertext updates, transaction rollback on any failure, and
+suppresses bank data/secret values in output. Reports are retained privately.
+
+Before production application: wait for reliable deployment capacity, take a
+fresh backup if data has advanced, confirm no active bank-sync process, and
+temporarily stop MCP traffic/writers so no old-key process observes or creates
+mixed ciphertext. Refresh the private database variable snapshot if needed.
+The script requires `--production --apply` and
+`ROTATION_MAINTENANCE_CONFIRMED=yes`; never set that acknowledgement unless the
+maintenance preconditions are verified. Coordinate the MCP encryption variable
+change and bank-sync's existing reference with the database transaction, then
+bring services back using the matching key. Do not run the current script twice
+against already rekeyed rows. Afterward verify all payloads with the new key,
+old-key decryption failure, search, exact bank totals/history, and a real MCP
+read; keep the old key only in protected offline recovery material.
+
+### Enable Banking and remaining exposure inventory
+
+The existing restricted production Bank Data application is
+`70775784-889a-49bb-a23d-0b430d541e40`. Its logged-in editor offers application
+metadata and redirect/origin fields, but no key/certificate replacement. The
+documented API covers new application registration, not replacement of this
+application's signing key. Do not invent an update endpoint or delete the
+application/consents to work around this. No provider credential has been
+changed or revoked yet.
+
+Prepared privately: `enable-banking-new-private.pem` (RSA-4096),
+`enable-banking-new-public.pem` (public certificate), and
+`enable-banking-support-request.txt`. The request is **unsent**, addressed to
+`support.api@enablebanking.com`, and asks for supported certificate replacement,
+old-key revocation, preserving the app/linked accounts/sessions if possible,
+and request-log review. Only the public certificate may be supplied to support;
+never send the private key. Contacting support requires explicit user
+authorization. Once the provider accepts the new certificate, update MCP's
+`ENABLE_BANKING_PRIVATE_KEY_BASE64`; bank-sync references MCP's variable. Verify
+the new key works and the old signing key fails. If a new application is
+required, explicit consent/link reconciliation is still outstanding.
+
+Railway says its stored API, bucket, and GitHub credentials were reset. Our CLI
+and connected Railway OAuth worked; this does not establish that every external
+Railway token or GitHub consumer has been repaired. Check GitHub source access
+if the queued deployments fail. Check credentials formerly stored on retired
+web/Trigger/search services for provider-side revocation separately.
+
+Official incident references:
+- https://blog.railway.com/p/security-disclosure-wednesday-october-21st
+- https://blog.railway.com/p/security-disclosure-recommendation-rotate-postgresql-database-credentials
+- https://status.railway.com/
+- https://enablebanking.com/docs/api/reference/
+
 ## 2026-10-18: expected bank outages must not crash the cron deployment
 
 The October 18 `bank-sync` run failed at 02:04 UTC because Enable Banking's
