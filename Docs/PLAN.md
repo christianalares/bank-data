@@ -16,7 +16,7 @@ this project's credentials after Railway's October 21 security disclosure.
   `MCP_ALL_BANKS_TOKEN`, `MCP_BOOKKEEPING_TOKEN`, `BANK_CONSENT_MCP_TOKEN`, and
   `BANK_CONSENT_COOKIE_SECRET`. The first MCP and bank-sync redeployments failed
   at `BUILD_IMAGE` without logs. MCP retry `7789828f-4163-4bfc-bdbd-9c678e7ba4af`
-  is in progress. Old runtime bearer credentials still authenticate; saving
+  also failed. Old runtime bearer credentials still authenticate; saving
   variables is not evidence that their old values have been revoked.
 - Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,642 stored
   payloads, and rebuild 11,635 blind search tokens atomically. Every plaintext
@@ -33,9 +33,12 @@ this project's credentials after Railway's October 21 security disclosure.
   entries across SEB business, Nordea personal, and Revolut personal match the
   old application. The two provider variables are staged only, with no
   destructive changes. The new key receives `SESSION_DOES_NOT_EXIST` for an
-  existing old-app session; application consents still require renewal. A tested
-  loopback-only consent helper is ready; adding its temporary localhost callback
-  awaits user approval. Verify history continuity before retiring the old app.
+  existing old-app session; application consents still require renewal. The user
+  chose to wait for Railway rather than use a local callback. The unsaved edit
+  was discarded, no localhost callback is registered, and the local helper is
+  stopped. A recovery monitor checks every 15 minutes and stays quiet until
+  there is an actionable change. Verify history continuity before retiring the
+  old application.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side
   revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private

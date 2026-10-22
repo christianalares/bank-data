@@ -2,6 +2,24 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+Latest handoff: the user chose **Wait for Railway instead** and did not approve
+the local callback. The unsaved editor change was discarded. A fresh signed
+`GET /application` verified the new app remains active with only
+`https://bank-data-mcp.up.railway.app/banking/callback` registered; no localhost
+callback was ever saved. The helper was terminated and its port has no listener.
+No real bank-data consent was started locally. MCP retry
+`7789828f-4163-4bfc-bdbd-9c678e7ba4af` has now also failed. The provider variables
+remain staged and the old provider key is not yet revoked.
+
+Recovery heartbeat `resume-bank-data-key-rotation` is active in this chat every
+15 minutes. It stays quiet on unchanged/non-actionable outage status. After a
+meaningful Railway recovery, it may make one bounded MCP redeploy attempt,
+verify `SUCCESS`, an actual bank read, and old-token rejection, then notify the
+user that normal consent renewal can resume and pause itself. It must not apply
+the staged provider change, run the production encryption migration, restart the
+local helper, or revoke the old application during a recovery check. No extra
+deployment was submitted while recording this wait decision.
+
 Continuation after new Enable Banking registration:
 
 - The user registered production app `324845c7-f648-48bf-a920-96d6a16b6291` and
