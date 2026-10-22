@@ -2,6 +2,27 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+Recovery accepted at 11:33 UTC: MCP deployment
+`c7daa8bf-c820-47ad-90c5-cd868d06a26e` reached `SUCCESS` at 11:23 UTC.
+Independent initialization probes accept all four prepared bearer tokens (200)
+and reject all four old values (401): business, all-bank, bookkeeping, and
+consent. Actual reads with the new credentials succeed: `list_all_bank_accounts`
+returns five selected account groups, and business `list_bank_accounts` returns
+two, both without RPC or tool errors. Private reports are
+`recovery-auth-1133.json` and `recovery-bank-reads-1134.json` in the incident
+directory. The recovery heartbeat is now paused; normal consent renewal can
+resume. Full incident rotation remains incomplete: Executor still has its old
+credentials, old-app bank sessions need renewal, the old provider app remains
+active, and production personal-data re-encryption has not run. Bank-sync must
+remain on hold until consent renewal and history continuity are verified.
+
+Probe correction: earlier checks called business `list_bank_accounts` with the
+ALL_BANKS token. That tool is unavailable in its scope, so the resulting MCP
+tool error was not valid evidence of a database failure. The successful recovery
+checks above use `list_all_bank_accounts` with ALL_BANKS and `list_bank_accounts`
+with the business token. Historical token acceptance/rejection results remain
+valid.
+
 Recovery check at 10:45 UTC: MCP deployment
 `c7daa8bf-c820-47ad-90c5-cd868d06a26e`, created at 10:39 UTC, is `QUEUED`
 with no build or runtime logs. Follow this deployment without adding a duplicate.

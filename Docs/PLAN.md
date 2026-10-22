@@ -12,15 +12,15 @@ this project's credentials after Railway's October 21 security disclosure.
 - Done: the user regenerated the Postgres password through Railway's supported
   database control. New authentication succeeds and old authentication fails.
   Both application services already reference `Postgres.DATABASE_URL`.
-- Configured, awaiting deployment: independent replacements for `MCP_API_TOKEN`,
+- Active in MCP: independent replacements for `MCP_API_TOKEN`,
   `MCP_ALL_BANKS_TOKEN`, `MCP_BOOKKEEPING_TOKEN`, `BANK_CONSENT_MCP_TOKEN`, and
   `BANK_CONSENT_COOKIE_SECRET`. The first MCP and bank-sync redeployments failed
   at `BUILD_IMAGE` without logs. MCP retry `7789828f-4163-4bfc-bdbd-9c678e7ba4af`
-  also failed. A later MCP deployment `c7daa8bf-c820-47ad-90c5-cd868d06a26e`
-  remains queued at 10:45 UTC; follow it without adding a duplicate. Old runtime
-  bearer credentials still authenticate, the new token is rejected, and an
-  authenticated bank-account read fails. Saving variables is not evidence that
-  their old values have been revoked.
+  also failed. MCP deployment `c7daa8bf-c820-47ad-90c5-cd868d06a26e` succeeded
+  at 11:23 UTC. At 11:33 UTC all four new bearer tokens authenticate and all four
+  old values return 401. Real all-bank and business account reads succeed with
+  five and two selected account groups respectively. The earlier all-bank probe
+  used the wrong scoped tool; its tool error did not establish database failure.
 - Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,642 stored
   payloads, and rebuild 11,635 blind search tokens atomically. Every plaintext
   payload and other bank column survived the isolated rehearsal exactly.
@@ -35,15 +35,15 @@ this project's credentials after Railway's October 21 security disclosure.
   verification. The app is active in restricted mode, and all six linked-account
   entries across SEB business, Nordea personal, and Revolut personal match the
   old application. The two provider variables are now saved in live Railway
-  configuration, with no staged changes remaining; runtime rollout is pending.
+  configuration, with no staged changes remaining; MCP rollout succeeded.
   Keep bank-sync on hold until consents are renewed. The new key receives
   `SESSION_DOES_NOT_EXIST` for an
   existing old-app session; application consents still require renewal. The user
   chose to wait for Railway rather than use a local callback. The unsaved edit
   was discarded, no localhost callback is registered, and the local helper is
-  stopped. A recovery monitor checks every 15 minutes and stays quiet until
-  there is an actionable change. Verify history continuity before retiring the
-  old application.
+  stopped. The recovery monitor is paused after successful deployment, token
+  rejection, and actual bank-read checks. Normal consent renewal can resume.
+  Verify history continuity before retiring the old application.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side
   revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private
