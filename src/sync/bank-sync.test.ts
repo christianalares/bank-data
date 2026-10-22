@@ -65,6 +65,44 @@ describe('bank sync overlap across renewed consents', () => {
     expect(matchesHistoricalTransaction(incoming(), [historical()])).toBe(true)
   })
 
+  it('recognizes exact archived business copies without accepting conflicting references', () => {
+    const business = {
+      ...historical('bank-reference'),
+      encryptedPersonalPayload: null,
+      rawMetadata: { entry_reference: 'bank-reference', transaction_id: 'bank-id' },
+    }
+    expect(
+      matchesHistoricalTransaction(incoming('bank-reference'), [business, { ...business }]),
+    ).toBe(true)
+    expect(() =>
+      matchesHistoricalTransaction(incoming('bank-reference'), [
+        business,
+        {
+          ...business,
+          rawMetadata: { entry_reference: 'bank-reference', transaction_id: 'other' },
+        },
+      ]),
+    ).toThrow('repeated across account rows')
+    expect(() =>
+      matchesHistoricalTransaction(incoming('bank-reference'), [
+        { ...business, rawMetadata: {} },
+        { ...business, rawMetadata: {} },
+      ]),
+    ).toThrow('repeated across account rows')
+    expect(() =>
+      matchesHistoricalTransaction(incoming('bank-reference'), [
+        business,
+        { ...business, amount: '-41.00' },
+      ]),
+    ).toThrow('repeated across account rows')
+    expect(() =>
+      matchesHistoricalTransaction(incoming('bank-reference'), [
+        historical('bank-reference'),
+        historical('bank-reference'),
+      ]),
+    ).toThrow('repeated across account rows')
+  })
+
   it('imports a new booked transaction with no historical overlap', () => {
     expect(
       matchesHistoricalTransaction(incoming('new-reference'), [

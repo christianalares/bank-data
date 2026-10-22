@@ -48,8 +48,11 @@ this project's credentials after Railway's October 21 security disclosure.
 - Pending deployment and live verification: include business accounts in the
   exact-IBAN/currency historical import guard. New application account UIDs all
   differ; the previous personal-only guard would duplicate SEB bookings.
-  The unsafe queued sync attempt was cancelled. Regression cases, all 54 tests,
-  typecheck, lint, and server build passed. Run the corrected sync before
+  The unsafe queued sync attempt was cancelled. Exact copies of existing
+  archived business references are recognized without deleting history;
+  conflicting references still fail. A real-importer replay on the restore
+  inserted zero transactions and preserved all 2,870 rows. Regression cases,
+  all 55 tests, typecheck, lint, and server build passed. Run the corrected sync before
   accepting fresh bank imports or starting encryption maintenance.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side

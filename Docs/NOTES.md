@@ -2,6 +2,23 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+An additional isolated sync rehearsal found 61 references already recorded
+twice in archived SEB history. Every pair has identical bank-provided payloads
+and financial fields. These pre-existing rows are preserved. The renewal guard
+now accepts repeated business references only when their original provider
+reference, complete raw payload, amount, currency, booking time, and balance
+agree; conflicting or unproven references still stop the import. Personal
+ambiguity checks remain unchanged. A new regression reproduced the failure
+before the fix. Replaying 109 historical SEB bookings through the real importer
+on the restored database inserted zero transactions and preserved all 2,870
+transaction IDs and columns exactly. The private report is
+`business-sync-rehearsal.json`. Full validation now passes 55 tests (four skipped),
+TypeScript, Biome, and server build. Superseded source deployments
+`39792460-4528-4b09-acf7-fe3eaf4447e1` and
+`867aaf69-f23e-4370-b232-8637c6cce0e5` were cancelled; deploy the follow-up fix
+before live sync. Reconciliation of older repeated records is outside this
+credential rotation; no archived bank record or bookkeeping match was removed.
+
 Actual consent cutover is now verified for SEB, Nordea, and Revolut. The user
 completed each normal Railway callback and account-selection flow. All three
 new sessions return HTTP 200 `AUTHORIZED` with the replacement application's
