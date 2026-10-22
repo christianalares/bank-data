@@ -2,6 +2,73 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+Continuation after new Enable Banking registration:
+
+- The user registered production app `324845c7-f648-48bf-a920-96d6a16b6291` and
+  saved its `.pem` in Downloads. The download and a matching private incident
+  copy have mode 0600. Node's crypto parser identifies an RSA-4096 key, and a
+  local sign/verify check passed. A JWT signed with this key successfully called
+  `GET https://api.enablebanking.com/application` (HTTP 200), returning the exact
+  new app ID, production environment, only `AIS`, and the canonical callback.
+  Its `active` field was false; new-app activation is not complete.
+- Public-key SHA-256 (SPKI DER):
+  `a1ed558a4056809f54f6117fe7d6658dcfe1a995c5c38d1bc818861309b0fe88`.
+  The incident copy is named
+  `enable-banking-324845c7-f648-48bf-a920-96d6a16b6291.pem`; never print it.
+- Only `ENABLE_BANKING_APPLICATION_ID` and `ENABLE_BANKING_PRIVATE_KEY_BASE64`
+  are staged for MCP in patch `5871dc0a-8521-4108-a542-b10334e02c32`. A read-back
+  reports exactly two changes and `destructive: false`. They have **not** been
+  applied to live service variables or deployed. Bank-sync's existing references
+  require no copied secret. Keep bank-sync from running the new provider key
+  against old-app session IDs before consent renewal completes.
+- The new app's SEB business whitelist flow was started and left at the Swedish
+  `Fortsätt autentisering` provider-terms page. The user must accept terms,
+  authenticate with BankID, and link the same company accounts. Nordea personal
+  and Revolut personal still need their new-app whitelist links. Whitelisting
+  and the application's own bank-data consents are separate steps.
+- Later verification: the user completed all three whitelist flows. The new app
+  is active/restricted, and its six linked-account entries match the old app
+  exactly (including Revolut's repeated IBAN across currencies). No IBANs or
+  bank balances are copied into this document. A signed new-key read of the
+  existing SEB session returned HTTP 404 `SESSION_DOES_NOT_EXIST`; the old key
+  returned HTTP 200 `AUTHORIZED` for the same session with two accounts. The
+  normal application consents therefore cannot simply be reused with the new key.
+- A private `local-consent.ts` helper is prepared using the existing
+  `handleBankConsentHttp` / `startBankConsent` code, the new provider key, current
+  production DB password, and current production personal-data encryption key.
+  It binds only `127.0.0.1:47892`; readiness returns HTTP 200, an invalid callback
+  returns 400 without touching the DB, and `/mcp` returns 404. No real consent
+  has been started through it. The user has been asked to approve temporarily
+  adding `http://localhost:47892/banking/callback` to the new provider app. The
+  editor contains the proposed URL but Save has not been clicked. Do not save
+  or start a real local renewal without the user's answer. Remove the URL and
+  stop the helper after use; if declined, close the unsaved edit and stop it.
+- Railway's GitHub Options → Reconnect flow was run and returned to
+  `Connected as christianalares`. The CLI's separate repository-access query
+  still returns `Not Authorized`, so do not claim source access is proven fixed.
+  The existing MCP retry is still building without logs; no duplicate was queued.
+- The user noticed the copied LocalCan privacy/terms URLs. Both return HTTP 502.
+  Enable Banking requires their fields for production, but its official FAQ
+  explicitly says it does not check those links when activating restricted apps
+  by linking the owner's accounts. They are informational policy links, not
+  callback URLs. This does not block the restricted setup; policy metadata is
+  still stale and should be replaced separately. No public app is being launched.
+  Source: https://enablebanking.com/docs/faq/#why-are-a-data-protection-email-and-links-to-app-terms-and-privacy-required-in-production
+- The first credential deployments `a55e508c-de31-424d-a496-f0c2891575a7` and
+  `6ddf7d05-fa1d-4234-b0da-17ea3bf03640` subsequently became `FAILED` at
+  `BUILD_IMAGE`, with generic `Deployment failed`, no logs, and no diagnosis.
+  The workspace plan was verified as `PRO`; Railway still reports elevated build
+  failures. One MCP retry using the last successful build was submitted as
+  `7789828f-4163-4bfc-bdbd-9c678e7ba4af`, with the staged provider change left
+  unapplied. Follow this ID before submitting another attempt.
+- The old availability probe and doc-only automatic deployments were cancelled
+  and read back as `REMOVED`; they must not supersede the intended credential
+  rollout. Git pushes enqueue deploys even for docs and `[skip ci]`, so cancel
+  new redundant doc-only jobs without cancelling the intended rollout.
+
+The older sections below retain the initial inventory and rehearsal evidence;
+the continuation above supersedes their deployment and registration status.
+
 The user requested rotation of this project's keys after Railway's October 21
 security disclosure. This is separate from migration acceptance; rotation is
 **incomplete** while application deployments and upstream/client changes wait.

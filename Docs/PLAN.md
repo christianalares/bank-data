@@ -14,8 +14,9 @@ this project's credentials after Railway's October 21 security disclosure.
   Both application services already reference `Postgres.DATABASE_URL`.
 - Configured, awaiting deployment: independent replacements for `MCP_API_TOKEN`,
   `MCP_ALL_BANKS_TOKEN`, `MCP_BOOKKEEPING_TOKEN`, `BANK_CONSENT_MCP_TOKEN`, and
-  `BANK_CONSENT_COOKIE_SECRET`. MCP and bank-sync redeployments remain `BUILDING`
-  without build logs. Old runtime bearer credentials still authenticate; saving
+  `BANK_CONSENT_COOKIE_SECRET`. The first MCP and bank-sync redeployments failed
+  at `BUILD_IMAGE` without logs. MCP retry `7789828f-4163-4bfc-bdbd-9c678e7ba4af`
+  is in progress. Old runtime bearer credentials still authenticate; saving
   variables is not evidence that their old values have been revoked.
 - Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,642 stored
   payloads, and rebuild 11,635 blind search tokens atomically. Every plaintext
@@ -26,10 +27,15 @@ this project's credentials after Railway's October 21 security disclosure.
   scope/addresses; refresh and verify real bank reads and bookkeeping boundaries.
 - Pending: Enable Banking signing-key replacement and old-key revocation. The
   user chose a fresh application instead of contacting support. Its production
-  registration form is prepared in the existing account, using browser key
-  generation and the canonical Bank Data callback; registration/key download
-  await the user. Relink accounts, renew consents, and verify history continuity
-  before retiring the old application. No provider change is complete yet.
+  app `324845c7-f648-48bf-a920-96d6a16b6291` is registered and its downloaded
+  RSA-4096 key passed both a local signature check and authenticated provider
+  verification. The app is active in restricted mode, and all six linked-account
+  entries across SEB business, Nordea personal, and Revolut personal match the
+  old application. The two provider variables are staged only, with no
+  destructive changes. The new key receives `SESSION_DOES_NOT_EXIST` for an
+  existing old-app session; application consents still require renewal. A tested
+  loopback-only consent helper is ready; adding its temporary localhost callback
+  awaits user approval. Verify history continuity before retiring the old app.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side
   revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private
