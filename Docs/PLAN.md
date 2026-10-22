@@ -21,15 +21,16 @@ this project's credentials after Railway's October 21 security disclosure.
   old values return 401. Real all-bank and business account reads succeed with
   five and two selected account groups respectively. The earlier all-bank probe
   used the wrong scoped tool; its tool error did not establish database failure.
-- Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,642 stored
-  payloads, and rebuild 11,635 blind search tokens atomically. Every plaintext
-  payload and other bank column survived the isolated rehearsal exactly.
+- Rehearsed only: replace `PERSONAL_DATA_ENCRYPTION_KEY`, re-encrypt 2,648 stored
+  payloads after consent renewal, and rebuild 11,635 blind search tokens
+  atomically. A fresh post-consent backup restored successfully; forward and
+  rollback rehearsals preserved every plaintext payload and other bank column.
   Production uses the old encryption key until a coordinated maintenance and
   deployment window is possible. Do not change the variable by itself.
 - Verified on follow-up: Executor's current `bank-data` allBanks account read
   returns five account groups, and its bookkeeping transaction read succeeds.
   Client access works; the earlier pending-credential statement is superseded.
-- Pending: Enable Banking signing-key replacement and old-key revocation. The
+- Replacement active; old-key revocation pending: Enable Banking signing key. The
   user chose a fresh application instead of contacting support. Its production
   app `324845c7-f648-48bf-a920-96d6a16b6291` is registered and its downloaded
   RSA-4096 key passed both a local signature check and authenticated provider
@@ -37,18 +38,19 @@ this project's credentials after Railway's October 21 security disclosure.
   entries across SEB business, Nordea personal, and Revolut personal match the
   old application. The two provider variables are now saved in live Railway
   configuration, with no staged changes remaining; MCP rollout succeeded.
-  Keep bank-sync on hold until consents are renewed. The new key receives
-  `SESSION_DOES_NOT_EXIST` for an
-  existing old-app session; application consents still require renewal. The user
-  chose to wait for Railway rather than use a local callback. The unsaved edit
-  was discarded, no localhost callback is registered, and the local helper is
-  stopped. The recovery monitor is paused after successful deployment, token
-  rejection, and actual bank-read checks. Normal consent renewal can resume.
-  Verify history continuity before retiring the old application.
-  A fresh follow-up session check returns 404 `SESSION_DOES_NOT_EXIST` for all
-  three stored SEB, Nordea, and Revolut sessions with the new application key.
-  Bank-sync's latest intended deployment remains `FAILED`; stored-data reads
-  alone do not establish working fresh imports.
+  The user completed actual SEB, Nordea, and Revolut consent renewal through
+  Railway. All three sessions return 200 `AUTHORIZED` with the new key, and all
+  2,870 original transactions and 11 original account rows remain intact.
+  The current selection is two SEB, one Nordea, and three Revolut accounts;
+  Revolut EUR is now selected too. The old connections remain as disconnected
+  history. No localhost callback was added, and the local helper is stopped.
+  The recovery monitor is paused. Verify fresh sync before revoking the old app.
+- Pending deployment and live verification: include business accounts in the
+  exact-IBAN/currency historical import guard. New application account UIDs all
+  differ; the previous personal-only guard would duplicate SEB bookings.
+  The unsafe queued sync attempt was cancelled. Regression cases, all 54 tests,
+  typecheck, lint, and server build passed. Run the corrected sync before
+  accepting fresh bank imports or starting encryption maintenance.
 - Pending: verify GitHub reconnection if needed after Railway's reset; review
   historical credentials from retired services for outstanding provider-side
   revocation. No live bucket, Redis, Google OAuth, GoCardless, AI, or private

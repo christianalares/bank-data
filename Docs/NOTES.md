@@ -2,6 +2,41 @@
 
 ## 2026-10-22: Railway incident credential rotation in progress
 
+Actual consent cutover is now verified for SEB, Nordea, and Revolut. The user
+completed each normal Railway callback and account-selection flow. All three
+new sessions return HTTP 200 `AUTHORIZED` with the replacement application's
+key; the selected raw accounts are two SEB, one Nordea, and three Revolut.
+All 2,870 existing transaction rows have exactly the same IDs and contents
+(excluding connection links/update timestamps), and all 11 original account
+rows remain. Three previous connections are retained as disconnected history.
+The current Revolut selection includes EUR, which was previously excluded;
+MCP therefore now exposes six selected account groups instead of five, with the
+same 2,870 booked transactions. No payment or bookkeeping decision changed.
+Private evidence: `all-consent-renewals-verification.json`, per-bank reports,
+`consent-renewal-baseline.json`, and `post-consent-MCP-baseline.json`.
+
+A fresh post-consent backup (4,451,548 bytes) restored successfully into
+`rotation_verify_cutover` in the private local PostgreSQL cluster. It contains
+six connections, 17 account rows, and 2,870 transactions. The reversible private
+encryption migration passed both directions on this restore: 2,633 transaction,
+11 account, and four connection payloads (2,648 total), with 11,635 search tokens.
+Exact plaintext and every other bank column survived. Production has not been
+re-encrypted yet; do not change its encryption variable alone.
+
+The first post-consent sync redeploy `dcd215a3-80a4-42eb-9b6a-39be720d9ad6`
+was cancelled and read back as `REMOVED` before execution. Inspection found
+that all renewed provider account UIDs changed, while cross-consent import
+overlap checks were restricted to personal accounts. SEB's 237 stored business
+transactions all have bank-provided references, so its new UID would otherwise
+re-import existing bookings. The fix includes exact-IBAN/currency business
+history in the existing reference-integrity checks. It preserves existing rows
+without rewriting their IDs or inferring bookkeeping matches. A regression test
+first reproduced the duplicate insert, then passed with the fix; cases for a
+different IBAN or currency still import their own rows. Full validation: 54
+tests passed (four skipped), TypeScript, Biome, and server build passed.
+Deploy this source fix before running sync. Old-app revocation and coordinated
+production encryption rotation remain pending.
+
 Follow-up after the user asked whether everything already works: current
 Executor `bank-data` calls succeed through allBanks account
 `acc_4c53ba44-f6f9-462c-be44-f6d740925eba` (five selected account groups) and
