@@ -311,25 +311,24 @@ async function syncEnableBankingConnection({
     const existingPersonalPayload = existingPersonalAccount?.encryptedPersonalPayload
       ? decryptPersonalAccountPayload(existingPersonalAccount.encryptedPersonalPayload)
       : null
-    const historicalAccounts =
-      connectionWorkspace.kind === 'personal' && accountDetails.account_id?.iban
-        ? (
-            await db.query.bankAccount.findMany({
-              where: (table, { eq }) => eq(table.workspaceId, connection.workspaceId),
-            })
-          ).filter((account) => {
-            if (
-              account.id === existingPersonalAccount?.id ||
-              account.currency !== (accountDetails.currency ?? balance?.currency ?? 'SEK')
-            ) {
-              return false
-            }
-            const payload = account.encryptedPersonalPayload
-              ? decryptPersonalAccountPayload(account.encryptedPersonalPayload)
-              : null
-            return payload?.iban === accountDetails.account_id?.iban
+    const historicalAccounts = accountDetails.account_id?.iban
+      ? (
+          await db.query.bankAccount.findMany({
+            where: (table, { eq }) => eq(table.workspaceId, connection.workspaceId),
           })
-        : []
+        ).filter((account) => {
+          if (
+            account.id === existingPersonalAccount?.id ||
+            account.currency !== (accountDetails.currency ?? balance?.currency ?? 'SEK')
+          ) {
+            return false
+          }
+          const payload = account.encryptedPersonalPayload
+            ? decryptPersonalAccountPayload(account.encryptedPersonalPayload)
+            : null
+          return (payload?.iban ?? account.iban) === accountDetails.account_id?.iban
+        })
+      : []
     const historicalOverrides = historicalAccounts
       .map((account) =>
         account.encryptedPersonalPayload

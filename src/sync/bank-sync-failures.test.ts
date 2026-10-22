@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { bankConnection, Database } from '#db'
+import { type bankConnection, bankTransaction, type Database } from '#db'
 import { runBankSync } from './bank-sync'
 
 type BankConnection = typeof bankConnection.$inferSelect
@@ -32,6 +32,7 @@ function database(connections: BankConnection[]) {
     id: 'test-account',
     providerAccountId: 'provider-account',
     name: 'Test account',
+    iban: 'SE-TEST-ACCOUNT',
     currency: 'SEK',
     included: true,
     encryptedPersonalPayload: null,
@@ -43,6 +44,10 @@ function database(connections: BankConnection[]) {
       },
       workspace: { findFirst: vi.fn().mockResolvedValue({ kind: 'business' }) },
       bankAccount: { findMany: vi.fn().mockResolvedValue([account]) },
+      bankTransaction: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(undefined),
+      },
     },
     update: vi.fn().mockReturnValue({
       set: (values: Record<string, unknown>) => {
@@ -56,7 +61,7 @@ function database(connections: BankConnection[]) {
       }),
     }),
   }
-  return { db, persisted, write }
+  return { db, persisted, write, account }
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -247,6 +252,59 @@ describe('bank sync provider failures', () => {
     ).rejects.toThrow('ENABLE_BANKING_APPLICATION_ID is required')
     await vi.runAllTimersAsync()
     await assertion
+  })
+
+  it.each([
+    { iban: 'SE-TEST-ACCOUNT', currency: 'SEK', skipped: 1 },
+    { iban: 'SE-OTHER-ACCOUNT', currency: 'SEK', skipped: 0 },
+    { iban: 'SE-TEST-ACCOUNT', currency: 'EUR', skipped: 0 },
+  ])('preserves business renewal history only for the same IBAN and currency: %j', async (old) => {
+    const { db, account } = database([connection('renewed')])
+    db.query.bankAccount.findMany
+      .mockResolvedValueOnce([account])
+      .mockResolvedValue([
+        account,
+        { ...account, id: 'historical-account', providerAccountId: 'old-provider-uid', ...old },
+      ])
+    db.query.bankTransaction.findMany.mockResolvedValue([
+      {
+        providerTransactionId: 'same-bank-reference',
+        amount: '-42.00',
+        currency: 'SEK',
+        bookedAt: new Date('2026-10-17T00:00:00Z'),
+        encryptedPersonalPayload: null,
+      },
+    ])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse({
+            balances: [],
+            transactions: [
+              {
+                entry_reference: 'same-bank-reference',
+                booking_date: '2026-10-17',
+                transaction_amount: { amount: '42.00', currency: 'SEK' },
+                credit_debit_indicator: 'DBIT',
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    expect(await runBankSync({ overlapDays: 14 }, db as unknown as Database)).toMatchObject({
+      status: 'success',
+      syncedConnections: 1,
+      syncedTransactions: 1 - old.skipped,
+      skippedHistorical: old.skipped,
+    })
+    if (old.skipped) {
+      expect(db.insert).not.toHaveBeenCalledWith(bankTransaction)
+    } else {
+      expect(db.insert).toHaveBeenCalledWith(bankTransaction)
+    }
   })
 
   it('still fails the job for data-integrity errors', async () => {
