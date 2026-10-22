@@ -677,7 +677,28 @@ export function matchesHistoricalTransaction(
   )
   if (sameReference.length > 0) {
     if (sameReference.length !== 1) {
-      throw new Error('A historical bank reference is repeated across account rows')
+      const first = sameReference[0]
+      const source = first.rawMetadata as {
+        entry_reference?: string
+        transaction_id?: string
+      } | null
+      // Earlier business renewals can leave multiple copies of one bank payload.
+      // Preserve those rows; reject conflicting references instead of guessing.
+      const exactBusinessCopies =
+        (source?.entry_reference === transaction.providerTransactionId ||
+          source?.transaction_id === transaction.providerTransactionId) &&
+        sameReference.every(
+          (item) =>
+            !item.encryptedPersonalPayload &&
+            item.amount === first.amount &&
+            item.currency === first.currency &&
+            item.bookedAt.getTime() === first.bookedAt.getTime() &&
+            item.balanceAfterTransaction === first.balanceAfterTransaction &&
+            JSON.stringify(item.rawMetadata) === JSON.stringify(first.rawMetadata),
+        )
+      if (!exactBusinessCopies) {
+        throw new Error('A historical bank reference is repeated across account rows')
+      }
     }
     if (
       sameReference[0].amount !== transaction.amount ||
