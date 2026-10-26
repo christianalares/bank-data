@@ -38,3 +38,7 @@ skipped), typecheck, Biome, Drizzle migration checks, the server build, and MCP
 health/authentication smoke checks. Private operational notes and payment API
 research were removed from public history. Production data and infrastructure
 were not accessed or changed by this cleanup.
+
+The legacy Trigger deployment workflow reads its target from the private
+`TRIGGER_PROJECT_REF` GitHub secret and skips deployment when that target is
+unconfigured. Deployment identifiers must not be reintroduced into source.
