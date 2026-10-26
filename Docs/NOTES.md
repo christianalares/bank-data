@@ -30,3 +30,11 @@ Run the relevant local checks. Before production changes, verify the target,
 create a private backup, restore it into an isolated database, rehearse changes,
 and compare exact records. Keep operational evidence in a private record.
 A successful build or deployment alone does not establish production acceptance.
+
+## Privacy cleanup validation
+
+The migration branch passed 55 enabled tests (four database integration tests
+skipped), typecheck, Biome, Drizzle migration checks, the server build, and MCP
+health/authentication smoke checks. Private operational notes and payment API
+research were removed from public history. Production data and infrastructure
+were not accessed or changed by this cleanup.
