@@ -34,9 +34,17 @@ addresses. The Railway IaC requires private configuration for expected project,
 environment and existing volume name; missing values fail closed. Do not apply
 placeholder configuration to an existing deployment.
 
-Snapshot-specific maintenance scripts require privately reviewed expectations.
-Set their `bank_data.expected_*` PostgreSQL session settings from the reviewed
-snapshot before execution; missing settings must abort the operation.
+## Repository consolidation
+
+Bring the bank MCP and bookkeeping implementation into `main` with its existing
+history. Remove retired editor rules, deployment jobs, environment settings,
+storage dependencies and one-off retirement utilities. Keep the existing
+Drizzle schema and migration journal intact. Removing repository tooling does
+not authorize database changes or a live Railway source-branch change.
+
+Acceptance requires the root package quality gates, server smoke checks, a
+frozen-lockfile install, and verification that the migration and bookkeeping
+branch tips are included in `main`. Record non-private results in `NOTES.md`.
 
 ## Public repository privacy acceptance
 

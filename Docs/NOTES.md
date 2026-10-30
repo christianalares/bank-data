@@ -39,6 +39,20 @@ health/authentication smoke checks. Private operational notes and payment API
 research were removed from public history. Production data and infrastructure
 were not accessed or changed by this cleanup.
 
-The legacy Trigger deployment workflow reads its target from the private
-`TRIGGER_PROJECT_REF` GitHub secret and skips deployment when that target is
-unconfigured. Deployment identifiers must not be reintroduced into source.
+## Repository consolidation
+
+`main` is the canonical branch for the bank MCP and bookkeeping implementation.
+The former web application and task infrastructure are retired. The repository
+now uses root package CI checks, PostgreSQL-only local infrastructure, and MCP
+documentation aligned with the registered tools and authentication scopes.
+
+Editor-specific rules, the obsolete deployment workflow, unused storage SDK,
+bucket/connection retirement scripts and uncalled transfer-matching heuristics
+have been removed. Current development and migration rules live in `AGENTS.md`.
+Historical database tables, encrypted payloads and the full Drizzle migration
+history are retained for data preservation.
+
+The root package passes 55 tests (four isolated-database tests skipped),
+typecheck, Biome, Drizzle checks, build and server smoke checks. Repository
+consolidation does not establish a register cutover or authorize a live
+source-branch change. Operational acceptance evidence remains private.

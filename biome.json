@@ -11,18 +11,12 @@
       "src/**/*",
       "scripts/**/*",
       "tsup.config.ts",
+      "drizzle.config.ts",
       ".railway/railway.ts",
-      "**/.vscode/**/*",
-      "**/index.html",
-      "**/vite.config.ts",
-      "**/drizzle.config.ts",
-      "**/package.json",
-      "!**/src/routeTree.gen.ts",
-      "!**/src/styles.css",
-      "!**/node_modules/**/*",
-      "!**/dist/**/*",
-      "!**/.output/**/*",
-      "!**/drizzle/**/*"
+      ".vscode/settings.json",
+      "package.json",
+      "biome.json",
+      "tsconfig.json"
     ]
   },
   "formatter": {
@@ -46,14 +40,10 @@
         "noNonNullAssertion": "off"
       },
       "suspicious": {
-        "noExplicitAny": "off",
-        "noDocumentCookie": "off"
+        "noExplicitAny": "off"
       },
       "complexity": {
         "noBannedTypes": "off"
-      },
-      "correctness": {
-        "useUniqueElementIds": "off"
       }
     }
   },

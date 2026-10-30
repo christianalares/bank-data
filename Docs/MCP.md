@@ -1,92 +1,22 @@
 # Bank Data MCP
 
-MCP server for searching transactions, viewing invoice attachments through short-lived signed
-links, and managing transaction matches without exposing raw document bytes.
+The MCP server exposes stored bank history and explicit company bookkeeping
+records. Bank reads are read-only; bookkeeping recording and bank consent use
+separate credentials. Document interpretation and matching decisions happen in
+Codex, outside this service. See [Bookkeeping](BOOKKEEPING.md) for record and
+payment-state contracts.
 
-Configure the private endpoint in the client outside this repository.
+## Transports and client setup
 
-## Configuration
+`src/mcp/index.ts` supports stdio and stateless Streamable HTTP. Set
+`MCP_TRANSPORT` to `stdio` or `http`. When unset, `PORT` selects HTTP; otherwise
+the server uses stdio. Stdio exposes the business read context, including
+bookkeeping lists.
 
-Both transports require:
-
-- `DATABASE_URL`: PostgreSQL connection string
-- `PERSONAL_DATA_ENCRYPTION_KEY`: the same 64-character hex key used by the web and jobs services
-- `PERSONAL_SEARCH_SERVICE_URL` and `PERSONAL_SEARCH_API_TOKEN`: the isolated Cloudflare
-  Workers AI + Vectorize search service
-
-The HTTP transport also requires:
-
-- `MCP_API_TOKEN`: random bearer token with at least 32 characters
-- `MCP_ALL_BANKS_TOKEN`: optional, distinct bearer token with at least 32 characters for a
-  read-only view of selected personal and business bank accounts in one MCP connection
-- `PORT`: HTTP port; Railway provides this automatically
-- `MCP_ALLOWED_HOSTS`: optional comma-separated custom domains; Railway's generated public domain
-  is allowed automatically
-- `MCP_ALLOWED_ORIGINS`: optional comma-separated serialized origins for browser-based clients
-- `MCP_MAX_CONCURRENT_REQUESTS`: bounded authenticated request concurrency; defaults to `4`
-- `DATABASE_STATEMENT_TIMEOUT_MS`: PostgreSQL statement deadline; HTTP mode defaults to `25000`
-- `AWS_S3_BUCKET_NAME`, `AWS_ENDPOINT_URL`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, and
-  `AWS_SECRET_ACCESS_KEY`: required when creating attachment download URLs
-
-The server reads the app's workspace directly. It never creates a workspace.
-
-## Tools
-
-- `get_finance_overview`
-- `search_transactions`
-- `list_attachments`
-- `get_transaction`
-- `get_attachment_image`
-- `get_attachment_download_url`
-- `link_attachment_to_transaction`
-- `approve_suggested_match`
-- `dismiss_suggested_match`
-- `unlink_attachment`
-- `ignore_attachment`
-
-Personal MCP tokens created under **Personal > Connections** expose only these read-only tools:
-
-- `list_personal_accounts`
-- `search_personal_transactions`
-- `summarize_personal_spending`
-
-They never expose IBANs, raw provider payloads, invoice tools, or mutation tools. Every personal tool
-call is recorded in the MCP access log without storing the text of the user’s search query.
-
-The dedicated `MCP_ALL_BANKS_TOKEN` exposes only these read-only tools:
-
-- `list_all_bank_accounts`
-- `list_all_bank_transactions`
-- `summarize_all_bank_transactions`
-
-They return `bankName` (such as Example Bank) and `workspaceKind` on each account and
-transaction. The totals tool groups booked counts and amounts by bank, workspace, and currency.
-Use `bankName` and/or `workspaceKind` to filter one bank or personal/business workspace within the
-same connection. Unfiltered transaction pages interleave banks by booking date; callers should
-group rows by bank and workspace or ask the user which source they mean. All-bank access includes personal
-transaction descriptions, so keep this token separate from existing business and personal tokens.
-Banks with multiple selected accounts, including personal and shared accounts, are distinguished
-by stable `accountId`; filter on that ID or group returned rows by `accountId` and `accountName`.
-Connection status and last sync time show whether provider data is fresh; stored history can still
-be read while a bank is disconnected.
-
-All list results are cursor-paginated. Pass the returned `nextCursor` into the next call with the
-same filters.
-
-`get_attachment_image` returns a Markdown image link (`![...](signed-url)`) in a single `text` block
-so clients that only render Markdown (e.g. Raycast) display it inline; callers should paste that
-Markdown into their reply. It does not return a native MCP `image` content block. PDFs are rendered
-server-side to a PNG (page 1 by default; pass `page` for others) and cached under
-`previews/<attachmentId>/page-N.png`, so repeat views reuse the cached PNG instead of re-rendering;
-image attachments are already viewable files, so their preview URL points straight at the original
-with no render, download, or upload. Signed preview URLs expire after one hour. Use
-`get_attachment_download_url` for the original file or a shareable download link. Both tools require
-the `AWS_*` storage variables.
-
-## Run locally
+Build and run a local stdio client with:
 
 ```bash
-pnpm build:server
+pnpm build
 pnpm start:mcp:local
 ```
 
@@ -95,7 +25,7 @@ Example MCP client configuration after building:
 ```json
 {
   "mcpServers": {
-    "bank-data-finance": {
+    "bank-data": {
       "command": "pnpm",
       "args": ["--dir", "/absolute/path/to/bank-data", "start:mcp:local"]
     }
@@ -103,10 +33,92 @@ Example MCP client configuration after building:
 }
 ```
 
-The public health check is available at `/health`. The MCP endpoint validates request hosts and
-origins, reads at most 1 MiB per request, bounds concurrent work, and never returns raw file bytes.
-Signed download links expire after five minutes and can include the attachment's storage path.
+For local HTTP, configure `.env` and run:
 
-The legacy Railway services have not been switched to the root package commands. Their current
-configuration in `.railway/railway.ts` is retained for review. Production deployment and database
-migration require the backup and restore gate in `Docs/PLAN.md` first.
+```bash
+MCP_TRANSPORT=http PORT=3001 pnpm dev:mcp
+```
+
+Connect to `http://localhost:3001/mcp` using `Authorization: Bearer <token>`.
+`GET /health` is public. Keep remote endpoint URLs and credentials in private
+client configuration.
+
+## Configuration
+
+[`.env.example`](../.env.example) lists the current local settings. Database
+operations require `DATABASE_URL`. Encrypted personal data requires its original
+64-character hex `PERSONAL_DATA_ENCRYPTION_KEY`.
+
+HTTP requires `MCP_API_TOKEN`. Optional `MCP_ALL_BANKS_TOKEN`,
+`MCP_BOOKKEEPING_TOKEN`, and `BANK_CONSENT_MCP_TOKEN` select their respective
+contexts. Use distinct random values of at least 32 characters. Personal tokens
+are checked against non-revoked hashes in `personal_mcp_token` and their personal
+workspace; authentication updates their last-used time.
+
+Bookkeeping requires `BANK_CONSENT_BUSINESS_WORKSPACE_ID` to identify an existing
+business workspace. Consent also uses `BANK_CONSENT_PERSONAL_WORKSPACE_ID` for
+personal access, `BANK_CONSENT_COOKIE_SECRET` for signed browser state, and
+`BANK_CONSENT_REDIRECT_ORIGIN` for the `/banking/callback` redirect. Consent and
+sync use `ENABLE_BANKING_APPLICATION_ID` and `ENABLE_BANKING_PRIVATE_KEY_BASE64`.
+The server does not create workspaces.
+
+HTTP checks hosts and browser origins. Local hosts and the generated Railway
+public domain are allowed automatically. Add custom hosts with
+`MCP_ALLOWED_HOSTS` and browser origins with `MCP_ALLOWED_ORIGINS` (comma-separated).
+The default port is `3001`, authenticated concurrency is `4` via
+`MCP_MAX_CONCURRENT_REQUESTS`, and the HTTP database statement deadline defaults
+to `25000` ms via `DATABASE_STATEMENT_TIMEOUT_MS`. Request bodies are limited to
+1 MiB.
+
+## Tools by credential
+
+| Context | Tools |
+| --- | --- |
+| Business (`MCP_API_TOKEN` or stdio) | `list_bank_accounts`, `list_bank_transactions`, `summarize_bank_transactions`, and the bookkeeping lists below. |
+| Personal (stored token) | `list_bank_accounts`, `list_bank_transactions`, `summarize_bank_transactions`, `list_personal_accounts`, `search_personal_transactions`, `summarize_personal_spending`. |
+| All banks (`MCP_ALL_BANKS_TOKEN`) | `list_all_bank_accounts`, `list_all_bank_transactions`, `summarize_all_bank_transactions`, and the bookkeeping lists below. |
+| Bookkeeping (`MCP_BOOKKEEPING_TOKEN`) | All bookkeeping lists and recording tools below. |
+| Consent (`BANK_CONSENT_MCP_TOKEN`) | `start_bank_consent`, `get_bank_consent_status`, `recover_bank_selection`. |
+
+Bookkeeping lists:
+
+- `list_bookkeeping_documents`
+- `list_bookkeeping_transactions`
+- `list_bookkeeping_invoices`
+- `list_bookkeeping_history`
+
+Bookkeeping recording tools:
+
+- `record_bookkeeping_document`
+- `record_bookkeeping_transaction`
+- `record_bookkeeping_invoice`
+
+Personal and consent contexts have no bookkeeping access. Recording tools require
+`requestId`, a declared `actor`, and `expectedRevision` (`0` for creation).
+Transaction decisions require explicit evidence; payment evidence is required
+for states beyond `unknown` and `unpaid`. Identical retries return the original
+outcome, while conflicting requests and stale revisions fail. The declared actor
+is provenance rather than authenticated identity. Recording does not initiate
+payments, upload documents, or send them to an accountant.
+
+## Reading and interpreting results
+
+Bank reads return booked transactions from selected accounts. Discover accounts
+first when a bank or account is ambiguous. Combined access includes personal
+transaction descriptions; keep its credential separate from business-only
+access. Use `bankName`, `workspaceKind`, and stable `accountId` filters to keep
+banks and accounts distinct. Totals retain original currencies; debits are
+negative. Personal search uses indexed text tokens in PostgreSQL.
+
+Follow `nextCursor` with the same filters until pagination is complete. Bank
+transaction pages also report `incompletePage`. Connection status and last sync
+time describe freshness separately; stored history remains readable after a
+bank disconnects and may be incomplete. Personal tool calls record an audit
+entry without storing the search query text.
+
+Bookkeeping results describe explicit recorded decisions. An unregistered
+transaction has no review decision. `followupClosed`, matching state, and payment
+state are independent. Registered document paths refer to the operator's private
+local archive. Use exact identifiers, hashes, and supplied evidence when
+reconciling records, following the [production change gates](PLAN.md) before any
+schema or register cutover.

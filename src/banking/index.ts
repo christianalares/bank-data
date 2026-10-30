@@ -1,7 +1,5 @@
 import { createHash, sign } from 'node:crypto'
 
-export * from './personal-transfers'
-
 export const ENABLE_BANKING_NO_ACCOUNTS_ERROR =
   'The bank authorized this consent but returned no accessible accounts. If Bank Data uses restricted Enable Banking access, link this bank account to the Bank Data application in the Enable Banking Control Panel, then reconnect and select at least one account.'
 

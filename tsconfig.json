@@ -14,5 +14,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "drizzle.config.ts", "tsup.config.ts"],
-  "exclude": ["infra", "dist", "node_modules"]
+  "exclude": ["dist", "node_modules"]
 }

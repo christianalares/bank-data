@@ -34,7 +34,16 @@ cp -rf source dest
 Use `scp -o BatchMode=yes` and `ssh -o BatchMode=yes`. Use `apt-get -y` and
 `HOMEBREW_NO_AUTO_UPDATE=1` for Homebrew commands.
 
-## Migration Work
+## Development and migrations
+
+This is one TypeScript/pnpm package at the repository root. Use Biome for
+formatting and linting. Run `pnpm test`, `pnpm typecheck`, `pnpm check`,
+`pnpm db:check`, `pnpm build`, and `pnpm test:smoke` for service changes.
+
+Drizzle migrations are the source of truth for schema changes. When changing
+`src/db/schema.ts`, generate a migration with `pnpm db:generate` and commit the
+reviewed SQL and metadata under `drizzle/` with the schema change. Use
+`pnpm db:migrate` for the intended local database; never use schema push.
 
 Track migration status and acceptance evidence in `Docs/PLAN.md` and
 `Docs/NOTES.md`. Preserve the production database and follow the cutover gates

@@ -9,12 +9,7 @@ node_modules/
 
 # Build output
 dist/
-.output/
-.nitro/
-.turbo/
+coverage/
 
 # Logs
 *.log
-
-# Trigger.dev local build cache
-packages/jobs/.trigger/

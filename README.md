@@ -53,6 +53,8 @@ The HTTP server exposes different tools according to the bearer credential:
 | `MCP_BOOKKEEPING_TOKEN` | Bookkeeping lists and `record_bookkeeping_document`, `record_bookkeeping_invoice`, and `record_bookkeeping_transaction`. |
 | `BANK_CONSENT_MCP_TOKEN` | `start_bank_consent`, `get_bank_consent_status`, and `recover_bank_selection`. |
 
+See the [MCP reference](Docs/MCP.md) for tool names, configuration, and client setup.
+
 Keep the configured credentials distinct and at least 32 characters long.
 Personal and consent contexts have no bookkeeping access. Bookkeeping writes
 require a request ID, declared actor, and expected revision. Transaction reviews
@@ -147,6 +149,11 @@ This repository is one TypeScript/pnpm application package:
 | `src/bookkeeping/` | Explicit bookkeeping records, validation, audit history, and MCP tools. |
 | `src/db/` and `drizzle/` | PostgreSQL access, personal data encryption, schema, and migration history. |
 | `scripts/` | Register export, backfill, verification, and operational utilities. |
+
+`main` contains the current bank MCP and bookkeeping implementation. GitHub
+Actions runs the root package checks on pushes to `main` and pull requests.
+Historical database tables remain in the schema to preserve existing data and
+migration history.
 
 ## Deployment and database changes
 

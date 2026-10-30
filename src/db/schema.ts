@@ -18,7 +18,8 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Invoice parsing schema (shared between DB column typing and the jobs package)
+// Historical attachment payload typing, retained for stored rows.
+// Document interpretation happens outside this service.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const parsedInvoiceSchema = z.object({
