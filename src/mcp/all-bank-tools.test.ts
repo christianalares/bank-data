@@ -52,6 +52,7 @@ describe('all-bank MCP scope', () => {
       } else {
         expect(tools.some((t) => t.name.includes('bookkeeping'))).toBe(false)
       }
+      expect(tools.some((t) => t.name === 'list_business_upcoming_payments')).toBe(false)
     } finally {
       await client.close()
       await server.close()
@@ -74,6 +75,7 @@ describe('all-bank MCP scope', () => {
         'list_bookkeeping_history',
         'list_bookkeeping_invoices',
         'list_bookkeeping_transactions',
+        'list_business_upcoming_payments',
         'summarize_all_bank_transactions',
       ])
       expect(result.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true)
@@ -103,6 +105,7 @@ describe('all-bank MCP scope', () => {
         'list_bookkeeping_history',
         'list_bookkeeping_invoices',
         'list_bookkeeping_transactions',
+        'list_business_upcoming_payments',
         'summarize_bank_transactions',
       ])
       expect(result.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true)

@@ -14,6 +14,7 @@ import {
   recoverBankSelection,
   startBankConsent,
 } from '../banking/consent-service'
+import { UpcomingPaymentsReadError } from '../banking/upcoming-payments'
 import { registerBookkeepingTools } from '../bookkeeping/mcp'
 import { AllBankReadService } from '../finance/all-bank-service'
 import {
@@ -29,6 +30,11 @@ import {
   listBankTransactionsInputSchema,
 } from '../finance/bank-schemas'
 import { BankReadService } from '../finance/bank-service'
+import {
+  businessUpcomingPaymentsSchema,
+  listBusinessUpcomingPaymentsInputSchema,
+} from '../finance/upcoming-payment-schemas'
+import { BusinessUpcomingPaymentService } from '../finance/upcoming-payment-service'
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -69,6 +75,7 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
   if (context.mode === 'all-banks') {
     const server = new McpServer({ name: 'bank-data-all-banks', version: '0.1.0' })
     registerAllBankReadTools(server)
+    registerUpcomingPaymentTool(server)
     registerBookkeepingTools(server)
     return server
   }
@@ -78,9 +85,39 @@ export function createFinanceMcpServer(context: FinanceMcpContext = { mode: 'bus
     version: '0.2.0',
   })
   registerBankReadTools(server, context)
+  registerUpcomingPaymentTool(server)
   registerBookkeepingTools(server)
 
   return server
+}
+
+function registerUpcomingPaymentTool(server: McpServer) {
+  const payments = new BusinessUpcomingPaymentService()
+  server.registerTool(
+    'list_business_upcoming_payments',
+    {
+      title: 'Read preliminary business bank entries',
+      description:
+        'Fetch live preliminary/future bank entries for one selected canonical business account and an inclusive value_date range of at most 93 days. Discover business accounts first. Returns source PDNG or SCHD entries, including today and undated entries (dateRangeMatch=unknown); card reservations may be included. BOOK and other statuses are excluded and counted. Amounts retain source precision; direction comes from creditDebitIndicator. valueDate is not a confirmed execution date. signingStatus=not_provided: PDNG does not prove signing or payment. Check retrieval.complete and incompleteReason; full API pagination does not guarantee all bank instructions. Entries have no invented stable IDs; duplicates are preserved. A disappearance proves no payment outcome. This read never changes invoices or booked history. Background provider limits apply: avoid repeated polling.',
+      inputSchema: listBusinessUpcomingPaymentsInputSchema,
+      outputSchema: businessUpcomingPaymentsSchema,
+      annotations: { ...readOnlyAnnotations, openWorldHint: true },
+    },
+    async (input) =>
+      executeOperation(async () => {
+        const result = await payments.listPayments(input)
+        console.info(
+          JSON.stringify({
+            event: 'bank_mcp_read',
+            toolName: 'list_business_upcoming_payments',
+            resultCount: result.entries.length,
+            complete: result.retrieval.complete,
+            pagesRetrieved: result.retrieval.pagesRetrieved,
+          }),
+        )
+        return result
+      }),
+  )
 }
 
 function createBankConsentMcpServer() {
@@ -474,6 +511,7 @@ async function executeOperation<T extends Record<string, unknown>>(operation: ()
 }
 
 function safeErrorMessage(error: unknown) {
+  if (error instanceof UpcomingPaymentsReadError) return error.message
   if (!(error instanceof Error)) {
     return 'Bank data request failed'
   }

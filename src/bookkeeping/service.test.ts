@@ -219,6 +219,17 @@ describe.skipIf(!enabled)('bookkeeping database integrity', () => {
 
   it('traverses all imported transactions without duplicates and preserves closed records', async () =>
     isolated(async (service, tx) => {
+      const bankSnapshot = () =>
+        tx.execute(sql`
+        select count(*)::int as count,
+          md5(coalesce(string_agg(to_jsonb(t)::text, '' order by id), '')) as checksum
+        from bank_transaction t where workspace_id = ${businessId}
+      `)
+      const before = await bankSnapshot()
+      const expected = await tx
+        .select({ providerTransactionId: bookkeepingTransaction.providerTransactionId })
+        .from(bookkeepingTransaction)
+        .where(eq(bookkeepingTransaction.workspaceId, businessId))
       const ids: string[] = []
       let cursor: string | undefined
       do {
@@ -226,8 +237,8 @@ describe.skipIf(!enabled)('bookkeeping database integrity', () => {
         ids.push(...page.records.map((r) => String(r.providerTransactionId)))
         cursor = page.nextCursor ?? undefined
       } while (cursor)
-      expect(ids).toHaveLength(204)
-      expect(new Set(ids).size).toBe(204)
+      expect([...ids].sort()).toEqual(expected.map((r) => r.providerTransactionId).sort())
+      expect(new Set(ids).size).toBe(expected.length)
       const active = await service.listTransactions({
         dateFrom: '2026-10-01',
         includeClosed: false,
@@ -235,7 +246,6 @@ describe.skipIf(!enabled)('bookkeeping database integrity', () => {
       expect(
         active.records.every((r) => !r.followupClosed && String(r.bankDate) >= '2026-10-01'),
       ).toBe(true)
-      const original = await tx.execute(sql`select count(*)::int as count from bank_transaction`)
-      expect(original[0].count).toBe(2817)
+      expect(await bankSnapshot()).toEqual(before)
     }))
 })
