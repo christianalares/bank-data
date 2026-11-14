@@ -56,3 +56,25 @@ The root package passes 55 tests (four isolated-database tests skipped),
 typecheck, Biome, Drizzle checks, build and server smoke checks. Repository
 consolidation does not establish a register cutover or authorize a live
 source-branch change. Operational acceptance evidence remains private.
+
+## Preliminary business bank reads
+
+`list_business_upcoming_payments` reads live PDNG/SCHD source entries separately
+from stored booked history. It requires a canonical included account in the
+configured business workspace, resolves current consent aliases, and rechecks
+access across provider pages. Only business and all-bank read contexts expose it.
+
+The contract preserves decimal strings, source schemes, dates and missing IDs.
+It supplies no signing determination or invoice decision. Date filtering uses
+value_date; undated entries have an unknown date-range match. Card reservations
+are not classified. Pagination limits and provider failures remain distinct from
+complete empty reads, and complete API pagination never guarantees full bank
+instruction coverage. No schema migration or persistent cache was introduced.
+
+Acceptance: 77 tests passed, four isolated-database tests skipped; typecheck,
+Biome, Drizzle checks, build and server smoke checks passed. A bounded live
+business-only read through a database connection enforcing read-only queries
+validated the output contract and preserved sync timestamps. Private operational
+evidence is kept outside the repository. The production tool registration and
+Patchbay discovery remain pending deployment; local acceptance is not a
+production rollout or register cutover.

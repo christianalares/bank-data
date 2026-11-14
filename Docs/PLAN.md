@@ -34,6 +34,21 @@ addresses. The Railway IaC requires private configuration for expected project,
 environment and existing volume name; missing values fail closed. Do not apply
 placeholder configuration to an existing deployment.
 
+## Preliminary business bank reads
+
+Expose live preliminary entries through a separate read-only MCP tool in the
+business and all-bank contexts. Require an explicit configured business scope,
+an included canonical account, current provider alias and bounded dates. Keep
+source status, precision and date names, signing uncertainty and API pagination
+completeness explicit. Preserve booked imports and all register decisions.
+
+No schema change, migration, persisted cache or register cutover is needed.
+Acceptance requires scope, alias, normalization and pagination tests plus the
+root quality gates. Live acceptance requires a bounded business-only read and
+verification of the deployed tool and current Patchbay discovery. Keep private
+operational evidence outside the public repository. Deployment remains subject
+to the production change gates above.
+
 ## Repository consolidation
 
 Bring the bank MCP and bookkeeping implementation into `main` with its existing
