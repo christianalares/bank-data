@@ -324,6 +324,27 @@ describe('bank sync provider failures', () => {
     }
   })
 
+  it('does not expose bank payload parameters in database failure summaries', async () => {
+    const { db } = database([connection('synthetic')])
+    db.insert.mockImplementation(() => {
+      throw Object.assign(new Error('Failed query: private-payment-reference'), {
+        query: 'insert into bank_account',
+        params: ['private-payment-reference'],
+      })
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => jsonResponse({ balances: [], transactions: [] })),
+    )
+    await expect(runBankSync({ overlapDays: 14 }, db as unknown as Database)).rejects.toThrow(
+      'Bank database operation failed',
+    )
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.stringContaining('private-payment-reference') }),
+    )
+  })
+
   it('still fails the job for data-integrity errors', async () => {
     const { db } = database([connection('invalid')])
     db.query.workspace.findFirst.mockResolvedValue(undefined)

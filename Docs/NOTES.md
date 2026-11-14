@@ -116,7 +116,7 @@ bookkeeping integrity without real bank calls. Production migration, both servic
 rollouts and current Patchbay acceptance are pending the specific rollout gates.
 Private evidence and banking contents remain outside the public repository.
 
-Acceptance passed 92 database-enabled tests with one unrelated integration test
+Acceptance passed 93 database-enabled tests with one unrelated integration test
 skipped, plus typecheck, Biome, Drizzle consistency, build and server smoke checks.
 The migration was safely reapplied to the isolated database. Existing business
 record fingerprints matched the restored baseline after the tests, and synthetic

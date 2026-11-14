@@ -147,7 +147,11 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
             lastSuccessAt = result.lastSuccessAt
           } catch (caughtError) {
             const message =
-              caughtError instanceof Error ? caughtError.message : 'Enable Banking sync failed'
+              caughtError instanceof Error && ('query' in caughtError || 'params' in caughtError)
+                ? 'Bank database operation failed'
+                : caughtError instanceof Error
+                  ? caughtError.message
+                  : 'Enable Banking sync failed'
             const failure = classifyProviderFailure(caughtError)
             await recordBankFetchFailure(db, connection.workspaceId, failure)
             const status =
