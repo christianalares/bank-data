@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { providerFailureSchema } from '../banking/provider-error'
 
 const nullableText = z.string().nullable()
 const identification = z.object({
@@ -67,21 +68,54 @@ export const businessUpcomingPaymentsSchema = z.object({
     z.object({ providerStatus: nullableText, count: z.number().int().nonnegative() }),
   ),
   excludedByValueDateCount: z.number().int().nonnegative(),
-  retrieval: z.object({
-    startedAt: z.string().datetime(),
-    retrievedAt: z.string().datetime().nullable(),
-    pagesRetrieved: z.number().int().nonnegative(),
-    complete: z.boolean(),
-    incompleteReason: z
-      .enum([
-        'provider_error',
-        'invalid_response',
-        'repeated_cursor',
-        'page_limit',
-        'entry_limit',
-        'time_limit',
-      ])
+  retrieval: z
+    .object({
+      startedAt: z.string().datetime(),
+      retrievedAt: z.string().datetime().nullable(),
+      pagesRetrieved: z.number().int().nonnegative(),
+      complete: z.boolean(),
+      incompleteReason: z
+        .enum([
+          'provider_error',
+          'invalid_response',
+          'repeated_cursor',
+          'page_limit',
+          'entry_limit',
+          'time_limit',
+        ])
+        .nullable(),
+    })
+    .nullable(),
+  observation: z.object({
+    dataAvailable: z.boolean(),
+    snapshotId: z.string().uuid().nullable(),
+    dateFrom: nullableText,
+    dateTo: nullableText,
+    ageSeconds: z.number().int().nonnegative().nullable(),
+    requestedRangeCovered: z.boolean(),
+    stale: z.boolean(),
+  }),
+  refresh: z.object({
+    scope: z.literal('workspace'),
+    lastAttemptAt: z.string().datetime().nullable(),
+    lastFinishedAt: z.string().datetime().nullable(),
+    lastAttemptComplete: z.boolean().nullable(),
+    lastObservationAttempt: z
+      .object({
+        dateFrom: z.string().date(),
+        dateTo: z.string().date(),
+        startedAt: z.string().datetime(),
+        retrievedAt: z.string().datetime().nullable(),
+        complete: z.boolean(),
+        pagesRetrieved: z.number().int().nonnegative(),
+        incompleteReason: nullableText,
+        failure: providerFailureSchema.nullable(),
+      })
       .nullable(),
+    failure: providerFailureSchema.nullable(),
+    nextAllowedAt: z.string().datetime().nullable(),
+    inProgress: z.boolean(),
+    blocked: z.boolean(),
   }),
   instructionCoverage: z.literal('not_guaranteed'),
 })

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { enableBankingRequest } from './index'
+import { classifyProviderFailure, type ProviderFailure, providerFailure } from './provider-error'
 
 const text = z.string().nullish()
 const sourceDate = z.string().date().nullish()
@@ -40,7 +41,10 @@ const pageSchema = z.object({
 })
 
 export class UpcomingPaymentsReadError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly failure?: ProviderFailure,
+  ) {
     super(message)
     this.name = 'UpcomingPaymentsReadError'
   }
@@ -72,6 +76,7 @@ export async function getEnableBankingPreliminaryTransactions(
   let pagesRetrieved = 0
   let retrievedAt: string | null = null
   let incompleteReason: IncompleteReason | null = null
+  let failure: ProviderFailure | null = null
 
   do {
     // Fail closed on revocation or a changed provider connection, including continuation reads.
@@ -95,13 +100,15 @@ export async function getEnableBankingPreliminaryTransactions(
         `/accounts/${encodeURIComponent(accountId)}/transactions?${params.toString()}`,
         { timeoutMs: remaining },
       )
-    } catch {
+    } catch (error) {
       incompleteReason = 'provider_error'
+      failure = classifyProviderFailure(error)
       break
     }
     const page = pageSchema.safeParse(raw)
     if (!page.success) {
       incompleteReason = 'invalid_response'
+      failure = providerFailure('invalid_response')
       break
     }
     pagesRetrieved += 1
@@ -129,11 +136,7 @@ export async function getEnableBankingPreliminaryTransactions(
   } while (continuationKey)
 
   await options.authorize()
-  if (pagesRetrieved === 0) {
-    throw new UpcomingPaymentsReadError(
-      'Upcoming bank entries could not be retrieved. No complete result is available; check the connection or retry later.',
-    )
-  }
+  if (incompleteReason && !failure) failure = providerFailure('incomplete_response')
   return {
     entries,
     retrieval: {
@@ -143,5 +146,11 @@ export async function getEnableBankingPreliminaryTransactions(
       complete: incompleteReason === null,
       incompleteReason,
     },
+    failure,
   }
 }
+
+export type PreliminaryReadResult = Awaited<
+  ReturnType<typeof getEnableBankingPreliminaryTransactions>
+>
+export type PreliminaryEntry = PreliminaryReadResult['entries'][number]

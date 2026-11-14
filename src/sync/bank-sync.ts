@@ -27,10 +27,17 @@ import {
   tokenizePersonalSearchText,
 } from '#db'
 
+import { classifyProviderFailure } from '../banking/provider-error'
+import {
+  BACKGROUND_FETCH_INTERVAL_MS,
+  recordBankFetchFailure,
+  withCoordinatedBankFetch,
+} from './fetch-coordinator'
+import { refreshBusinessUpcomingObservations } from './upcoming-observations'
+
 const TRANSACTION_IMPORT_CONCURRENCY = 6
 const PENDING_LIFETIME_MS = 30 * 60 * 1000
 const PROVIDER_ATTEMPTS = 3
-const BACKGROUND_FETCH_INTERVAL_MS = 6 * 60 * 60 * 1000
 const ASPSP_RATE_LIMIT_ERROR = 'ASPSP_RATE_LIMIT_EXCEEDED'
 
 function isRateLimitFailure(message: string) {
@@ -103,63 +110,89 @@ export async function runBankSync(payload: SyncBankingPayload, db: Database = cr
   const failures: { connectionId: string; status: 'error' | 'disconnected'; message: string }[] = []
   const fatalFailures: { connectionId: string; message: string }[] = []
 
-  for (const connection of connections) {
-    if (!payload.accountId && shouldDeferBackgroundSync(connection, startedAt)) {
-      deferredConnections += 1
-      console.info('Deferred recent background bank fetch', { connectionId: connection.id })
-      if (connection.status === 'error') {
+  const groups = new Map<string, typeof connections>()
+  for (const connection of connections)
+    groups.set(connection.workspaceId, [...(groups.get(connection.workspaceId) ?? []), connection])
+  for (const [workspaceId, workspaceConnections] of groups) {
+    const recent = workspaceConnections
+      .filter((c) => shouldDeferBackgroundSync(c, startedAt))
+      .map(
+        (c) =>
+          (c.status === 'error' ? c.updatedAt : c.lastSyncedAt)!.getTime() +
+          BACKGROUND_FETCH_INTERVAL_MS,
+      )
+    const initialNextAllowedAt = recent.length ? new Date(Math.max(...recent)) : null
+    const coordinated = await withCoordinatedBankFetch(
+      db,
+      workspaceId,
+      initialNextAllowedAt,
+      async () => {
+        for (const connection of workspaceConnections) {
+          try {
+            if (connection.consentValidUntil && connection.consentValidUntil <= startedAt) {
+              throw new Error('Bank consent expired')
+            }
+            const result = await syncEnableBankingConnection({
+              db,
+              connection,
+              overlapDays,
+              targetAccountId: payload.accountId,
+              historyDays: payload.historyDays,
+            })
+            syncedConnections += 1
+            syncedAccounts += result.syncedAccounts
+            syncedTransactions += result.syncedTransactions
+            skippedHistorical += result.skippedHistorical
+            bookingDateDrifts += result.bookingDateDrifts
+            lastSuccessAt = result.lastSuccessAt
+          } catch (caughtError) {
+            const message =
+              caughtError instanceof Error ? caughtError.message : 'Enable Banking sync failed'
+            const failure = classifyProviderFailure(caughtError)
+            await recordBankFetchFailure(db, connection.workspaceId, failure)
+            const status =
+              failure.kind === 'consent_expired' || isConsentFailure(message)
+                ? 'disconnected'
+                : 'error'
+
+            console.error('Failed to sync connection', {
+              connectionId: connection.id,
+              status,
+              message,
+            })
+
+            await db
+              .update(bankConnection)
+              .set({
+                status,
+                errorMessage: message,
+                disconnectedAt: status === 'disconnected' ? new Date() : null,
+                updatedAt: new Date(),
+              })
+              .where(eq(bankConnection.id, connection.id))
+
+            failures.push({ connectionId: connection.id, status, message })
+            // Handled bank outages leave a partial result for the next scheduled run.
+            // Database, configuration, and data-integrity errors still fail the job.
+            if (
+              status === 'error' &&
+              !(caughtError instanceof EnableBankingRequestError && caughtError.transient)
+            ) {
+              fatalFailures.push({ connectionId: connection.id, message })
+            }
+            if (failure.kind === 'rate_limited') break
+          }
+        }
+      },
+    )
+    if (coordinated.deferred) {
+      deferredConnections += workspaceConnections.length
+      for (const connection of workspaceConnections.filter((c) => c.status === 'error'))
         failures.push({
           connectionId: connection.id,
           status: 'error',
-          message: 'ASPSP background-fetch limit remains active',
+          message: 'Background bank refresh is deferred',
         })
-      }
-      continue
-    }
-
-    try {
-      if (connection.consentValidUntil && connection.consentValidUntil <= startedAt) {
-        throw new Error('Bank consent expired')
-      }
-      const result = await syncEnableBankingConnection({
-        db,
-        connection,
-        overlapDays,
-        targetAccountId: payload.accountId,
-        historyDays: payload.historyDays,
-      })
-      syncedConnections += 1
-      syncedAccounts += result.syncedAccounts
-      syncedTransactions += result.syncedTransactions
-      skippedHistorical += result.skippedHistorical
-      bookingDateDrifts += result.bookingDateDrifts
-      lastSuccessAt = result.lastSuccessAt
-    } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : 'Enable Banking sync failed'
-      const status = isConsentFailure(message) ? 'disconnected' : 'error'
-
-      console.error('Failed to sync connection', { connectionId: connection.id, status, message })
-
-      await db
-        .update(bankConnection)
-        .set({
-          status,
-          errorMessage: message,
-          disconnectedAt: status === 'disconnected' ? new Date() : null,
-          updatedAt: new Date(),
-        })
-        .where(eq(bankConnection.id, connection.id))
-
-      failures.push({ connectionId: connection.id, status, message })
-      // Handled bank outages leave a partial result for the next scheduled run.
-      // Database, configuration, and data-integrity errors still fail the job.
-      if (
-        status === 'error' &&
-        !(caughtError instanceof EnableBankingRequestError && caughtError.transient)
-      ) {
-        fatalFailures.push({ connectionId: connection.id, message })
-      }
     }
   }
 
@@ -452,6 +485,9 @@ async function syncEnableBankingConnection({
           syncedTransactions += 1
         }),
       )
+    }
+    if (connectionWorkspace.kind === 'business' && account.included) {
+      await refreshBusinessUpcomingObservations(db, account)
     }
   }
 

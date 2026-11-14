@@ -3,6 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type bankConnection, bankTransaction, type Database } from '#db'
 import { runBankSync } from './bank-sync'
 
+vi.mock('./fetch-coordinator', async (original) => ({
+  ...(await original<typeof import('./fetch-coordinator')>()),
+  recordBankFetchFailure: vi.fn().mockResolvedValue(undefined),
+  withCoordinatedBankFetch: async (
+    _db: unknown,
+    _workspace: string,
+    initial: Date | null,
+    operation: () => Promise<unknown>,
+  ) =>
+    initial && initial > new Date()
+      ? { deferred: true, reason: 'cooldown' }
+      : { deferred: false, result: await operation() },
+}))
+vi.mock('./upcoming-observations', () => ({
+  refreshBusinessUpcomingObservations: vi.fn().mockResolvedValue(undefined),
+}))
+
 type BankConnection = typeof bankConnection.$inferSelect
 
 function connection(id: string, overrides: Partial<BankConnection> = {}): BankConnection {

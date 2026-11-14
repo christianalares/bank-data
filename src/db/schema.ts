@@ -16,6 +16,8 @@ import {
 } from 'drizzle-orm/pg-core'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
+import type { ProviderFailure } from '../banking/provider-error'
+import type { IncompleteReason, PreliminaryEntry } from '../banking/upcoming-payments'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Historical attachment payload typing, retained for stored rows.
@@ -253,6 +255,60 @@ export const bankAccount = pgTable(
   (table) => [
     uniqueIndex('bank_account_provider_id_idx').on(table.connectionId, table.providerAccountId),
     index('bank_account_workspace_idx').on(table.workspaceId),
+  ],
+)
+
+// Shared background-fetch budget. Network operations hold a workspace advisory
+// lock; this row preserves cooldowns and failures across process restarts.
+export const bankFetchState = pgTable('bank_fetch_state', {
+  workspaceId: uuid('workspace_id')
+    .primaryKey()
+    .references(() => workspace.id, { onDelete: 'cascade' }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  lastFinishedAt: timestamp('last_finished_at', { withTimezone: true }),
+  nextAllowedAt: timestamp('next_allowed_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  failure: jsonb('failure').$type<ProviderFailure>(),
+})
+
+// One immutable, completed observation attempt. Array position distinguishes
+// identical source entries; it does not claim payment identity across reads.
+export const bankUpcomingSnapshot = pgTable(
+  'bank_upcoming_snapshot',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => bankAccount.id, { onDelete: 'cascade' }),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => bankConnection.id, { onDelete: 'cascade' }),
+    providerAccountId: text('provider_account_id').notNull(),
+    dateFrom: date('date_from').notNull(),
+    dateTo: date('date_to').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    retrievedAt: timestamp('retrieved_at', { withTimezone: true }),
+    storedAt: timestamp('stored_at', { withTimezone: true }).notNull().defaultNow(),
+    complete: boolean('complete').notNull(),
+    pagesRetrieved: integer('pages_retrieved').notNull(),
+    incompleteReason: text('incomplete_reason').$type<IncompleteReason>(),
+    failure: jsonb('failure').$type<ProviderFailure>(),
+    entries: jsonb('entries').$type<PreliminaryEntry[]>().notNull(),
+    excludedStatusCounts: jsonb('excluded_status_counts')
+      .$type<Array<{ providerStatus: string | null; count: number }>>()
+      .notNull(),
+    excludedByValueDateCount: integer('excluded_by_value_date_count').notNull(),
+  },
+  (t) => [
+    index('bank_upcoming_snapshot_source_idx').on(
+      t.workspaceId,
+      t.accountId,
+      t.connectionId,
+      t.storedAt,
+    ),
   ],
 )
 

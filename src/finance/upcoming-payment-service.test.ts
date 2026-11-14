@@ -1,7 +1,7 @@
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
-import type { Database } from '#db'
+import type { bankFetchState, bankUpcomingSnapshot, Database } from '#db'
 import {
   getEnableBankingPreliminaryTransactions,
   type preliminaryTransactionSchema,
@@ -17,7 +17,15 @@ vi.mock('../banking/upcoming-payments', async (original) => ({
   getEnableBankingPreliminaryTransactions: vi.fn(),
 }))
 
-afterEach(() => vi.resetAllMocks())
+let storedSnapshot: typeof bankUpcomingSnapshot.$inferSelect | undefined
+let latestAttempt: typeof bankUpcomingSnapshot.$inferSelect | undefined
+let fetchState: typeof bankFetchState.$inferSelect | undefined
+afterEach(() => {
+  vi.resetAllMocks()
+  storedSnapshot = undefined
+  latestAttempt = undefined
+  fetchState = undefined
+})
 const workspaceId = '00000000-0000-4000-8000-000000000001'
 const oldId = '00000000-0000-4000-8000-000000000002'
 const newId = '00000000-0000-4000-8000-000000000003'
@@ -61,6 +69,18 @@ function mockDb(
     },
   ]
   const db = {
+    query: {
+      bankUpcomingSnapshot: {
+        findFirst: vi
+          .fn()
+          .mockImplementation(async (q) =>
+            new PgDialect().sqlToQuery(q.where).params.includes(true)
+              ? storedSnapshot
+              : (latestAttempt ?? storedSnapshot),
+          ),
+      },
+      bankFetchState: { findFirst: vi.fn().mockImplementation(async () => fetchState) },
+    },
     select: () => ({
       from: () => {
         let kind: 'owner' | 'accounts' | 'source' = 'owner'
@@ -89,19 +109,25 @@ function mockDb(
 }
 
 function provider(transactions: z.infer<typeof preliminaryTransactionSchema>[]) {
-  vi.mocked(getEnableBankingPreliminaryTransactions).mockImplementation(async (_id, options) => {
-    await options.authorize()
-    return {
-      entries: transactions.map((transaction) => ({ transaction, retrievedAt })),
-      retrieval: {
-        complete: true,
-        incompleteReason: null,
-        pagesRetrieved: 1,
-        startedAt: retrievedAt,
-        retrievedAt,
-      },
-    }
-  })
+  storedSnapshot = {
+    id: '00000000-0000-4000-8000-000000000010',
+    workspaceId,
+    accountId: newId,
+    connectionId: 'current-connection',
+    providerAccountId: 'current-provider-account',
+    entries: transactions.map((transaction) => ({ transaction, retrievedAt })),
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    startedAt: new Date(retrievedAt),
+    retrievedAt: new Date(retrievedAt),
+    storedAt: new Date(retrievedAt),
+    complete: true,
+    incompleteReason: null,
+    failure: null,
+    pagesRetrieved: 1,
+    excludedStatusCounts: [],
+    excludedByValueDateCount: 0,
+  }
 }
 
 describe('business preliminary entries', () => {
@@ -109,10 +135,8 @@ describe('business preliminary entries', () => {
     const { db, statements } = mockDb()
     provider([{ status: 'PDNG', value_date: '2026-01-20' }])
     const result = await new BusinessUpcomingPaymentService(db, workspaceId).listPayments(input)
-    expect(getEnableBankingPreliminaryTransactions).toHaveBeenCalledWith(
-      'current-provider-account',
-      expect.anything(),
-    )
+    await new BusinessUpcomingPaymentService(db, workspaceId).listPayments(input)
+    expect(getEnableBankingPreliminaryTransactions).not.toHaveBeenCalled()
     expect(result.entries[0]).toMatchObject({
       accountId: oldId,
       accountName: 'Synthetic account',
@@ -129,9 +153,10 @@ describe('business preliminary entries', () => {
       workspaceId,
       'enable_banking',
       'connected',
+      'error',
     ])
     expect(source.sql).toContain('"bank_connection"."workspace_id"')
-    expect(result.retrieval.complete).toBe(true)
+    expect(result.retrieval?.complete).toBe(true)
   })
 
   it('preserves precision, both directions, source schemes, missing fields and identical instructions', async () => {
@@ -219,6 +244,55 @@ describe('business preliminary entries', () => {
     await expect(
       new BusinessUpcomingPaymentService(db, workspaceId).listPayments({ ...input, accountId }),
     ).rejects.toThrow('Selected business account is unavailable')
+    expect(getEnableBankingPreliminaryTransactions).not.toHaveBeenCalled()
+  })
+
+  it('keeps the last complete snapshot and exposes a failed refresh and its age', async () => {
+    const { db } = mockDb()
+    provider([{ status: 'PDNG', value_date: '2026-01-20' }])
+    latestAttempt = {
+      ...storedSnapshot!,
+      complete: false,
+      entries: [],
+      failure: {
+        kind: 'rate_limited',
+        httpStatus: 429,
+        providerCode: 'ASPSP_RATE_LIMIT_EXCEEDED',
+        retryAfterSeconds: null,
+      },
+    }
+    const result = await new BusinessUpcomingPaymentService(db, workspaceId).listPayments(input)
+    expect(result.entries).toHaveLength(1)
+    expect(result.retrieval?.retrievedAt).toBe(retrievedAt)
+    expect(result.refresh.failure?.kind).toBe('rate_limited')
+    expect(result.refresh.lastAttemptComplete).toBe(false)
+    expect(result.observation.stale).toBe(true)
+    expect(result.observation.ageSeconds).toBeGreaterThan(0)
+    expect(getEnableBankingPreliminaryTransactions).not.toHaveBeenCalled()
+  })
+
+  it('distinguishes an unobserved account from a complete empty snapshot', async () => {
+    const { db } = mockDb()
+    const service = new BusinessUpcomingPaymentService(db, workspaceId)
+    const absent = await service.listPayments(input)
+    expect(absent.observation.dataAvailable).toBe(false)
+    expect(absent.retrieval).toBeNull()
+    provider([])
+    const empty = await service.listPayments(input)
+    expect(empty.observation.dataAvailable).toBe(true)
+    expect(empty.retrieval?.complete).toBe(true)
+    expect(empty.entries).toEqual([])
+  })
+
+  it('reports requested dates outside stored coverage without fetching', async () => {
+    const { db } = mockDb()
+    provider([])
+    const result = await new BusinessUpcomingPaymentService(db, workspaceId).listPayments({
+      ...input,
+      dateFrom: '2025-12-31',
+    })
+    expect(result.observation.requestedRangeCovered).toBe(false)
+    expect(result.observation.stale).toBe(true)
     expect(getEnableBankingPreliminaryTransactions).not.toHaveBeenCalled()
   })
 

@@ -36,29 +36,52 @@ placeholder configuration to an existing deployment.
 
 ## Preliminary business bank reads
 
-Expose live preliminary entries through a separate read-only MCP tool in the
-business and all-bank contexts. Require an explicit configured business scope,
-an included canonical account, current provider alias and bounded dates. Keep
-source status, precision and date names, signing uncertainty and API pagination
-completeness explicit. Preserve booked imports and all register decisions.
+Read preliminary entries from stored observations refreshed by the existing bank
+sync. Keep the provider's source status, precision, dates, nullable IDs and
+identical instructions separate from booked imports and explicit invoice records.
+No payment identity, signing decision, matching or payment outcome is inferred.
 
-No schema change, migration, persisted cache or register cutover is needed.
-Acceptance requires scope, alias, normalization and pagination tests plus the
-root quality gates. Live acceptance requires a bounded business-only read and
-verification of the deployed tool and current Patchbay discovery. Keep private
-operational evidence outside the public repository. Deployment remains subject
-to the production change gates above.
+Migration `0018_stored_bank_observations` adds only `bank_fetch_state` and
+`bank_upcoming_snapshot`, their foreign keys and a source lookup index. It alters
+no existing bank or bookkeeping rows. The snapshot stores complete and incomplete
+attempts; current reads select only the latest complete result for the currently
+authorized source. Complete empty results supersede old observations; incomplete
+or failed results never do. The last complete result keeps its original age and
+coverage and is served with explicit refresh metadata and safe errors.
 
-The MCP rollout uses the canonical `main` source branch. Apply the source
-change only to the MCP service; retain the existing scheduled sync source and
-database configuration. The IaC records those separate sources without applying
-an infrastructure-wide plan.
+The shared PostgreSQL workspace lock serializes syncs across instances. Durable
+cooldowns also cover manual workspace/history imports and survive worker failure.
+429 responses stop further requests and defer refresh for at least six hours,
+respecting a longer Retry-After. This is application policy based on provider
+guidance, not a verified account reset time. MCP always reads the database and
+never refreshes automatically. Consent bootstrap and active-user PSU support are
+separate; no fabricated online-user headers are introduced.
 
-Code rollout acceptance: fresh backup and isolated restore verified; root
-quality gates, production health, authenticated scopes, live business output
-and unchanged source records verified. Patchbay discovers and permits the tool.
-Successful bank data retrieval through the gateway remains subject to upstream
-availability and rate limits; no register cutover or migration was performed.
+BOOK and upcoming requests remain separate within the coordinated sync, because
+the future feed has not been verified as a complete historical booked feed.
+The BOOK boundary excludes PDNG, SCHD and other explicit non-BOOK statuses.
+The sync uses its existing schedule and observes a 93-day UTC upcoming window.
+An explicit initial business refresh can use `--workspace-id UUID` after the
+shared cooldown; there is no new polling job.
+
+Local acceptance: generate/review the additive Drizzle migration, apply it to an
+isolated restore with `pnpm db:migrate`, run the full quality gates and database
+tests, and preserve exact existing business fingerprints. Verify repeated and
+concurrent MCP reads with zero network requests, multiple sync connections,
+429/backoff, partial pages, complete emptiness, stale coverage and changed access.
+
+Production rollout is pending specific migration authorization under the gates
+above. Before rollout, create and verify a fresh backup, rehearse this migration,
+and compare existing record fingerprints. Apply the additive migration before
+releasing code. Deploy MCP and move the existing scheduled sync source to the
+same reviewed `main` version so every refresh uses the coordinator. Do not apply
+an infrastructure-wide IaC plan. Seed a conservative cooldown using verified
+private evidence of the most recent rate limit; do not probe the bank to discover
+its reset. Verify health, tool definition/permissions, stored reads and unchanged
+source records without routine live bank calls. No snapshot exists until a
+permitted sync completes: report dataAvailable=false and do not promise an
+immediate first refresh. Retain the tables if code rollback is needed; never
+reset or replace production data. This is not a register cutover.
 
 ## Repository consolidation
 

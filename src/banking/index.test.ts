@@ -135,6 +135,8 @@ describe('getEnableBankingTransactions', () => {
           JSON.stringify({
             transactions: [
               { transaction_id: 'pending-second', status: 'PDNG' },
+              { transaction_id: 'scheduled', status: 'SCHD' },
+              { transaction_id: 'cancelled', status: 'CNCL' },
               { transaction_id: 'booked-second', status: 'BOOK' },
             ],
           }),
@@ -205,6 +207,48 @@ describe('normalizeEnableBankingTransaction', () => {
         { accountId: 'account', fallbackCurrency: 'SEK' },
       )
       expect(result.bookedAt.toISOString()).toBe('2026-09-28T00:00:00.000Z')
+    }
+  })
+})
+
+describe('safe provider failure metadata', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('preserves rate-limit and Retry-After metadata without leaking the response body', async () => {
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    vi.stubEnv('ENABLE_BANKING_APPLICATION_ID', 'synthetic')
+    vi.stubEnv(
+      'ENABLE_BANKING_PRIVATE_KEY_BASE64',
+      Buffer.from(privateKey.export({ format: 'pem', type: 'pkcs8' })).toString('base64'),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: 'ASPSP_RATE_LIMIT_EXCEEDED',
+            detail: { reference: 'private-source-reference' },
+          }),
+          { status: 429, headers: { 'Retry-After': '30000' } },
+        ),
+      ),
+    )
+    try {
+      await enableBankingRequest('/accounts/synthetic/transactions')
+      expect.fail('Expected rate limit')
+    } catch (error) {
+      expect(error).toMatchObject({
+        failure: {
+          kind: 'rate_limited',
+          httpStatus: 429,
+          providerCode: 'ASPSP_RATE_LIMIT_EXCEEDED',
+          retryAfterSeconds: 30000,
+        },
+      })
+      expect((error as Error).message).not.toContain('private-source-reference')
     }
   })
 })

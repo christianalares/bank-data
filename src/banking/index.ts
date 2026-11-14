@@ -1,4 +1,8 @@
 import { createHash, sign } from 'node:crypto'
+import { bankFetchContext } from './fetch-context'
+import { EnableBankingRequestError, providerFailure } from './provider-error'
+
+export { EnableBankingRequestError } from './provider-error'
 
 export const ENABLE_BANKING_NO_ACCOUNTS_ERROR =
   'The bank authorized this consent but returned no accessible accounts. If Bank Data uses restricted Enable Banking access, link this bank account to the Bank Data application in the Enable Banking Control Panel, then reconnect and select at least one account.'
@@ -58,7 +62,7 @@ export type EnableBankingTransaction = {
     amount?: string
   }
   credit_debit_indicator?: 'CRDT' | 'DBIT'
-  status?: 'BOOK' | 'PDNG'
+  status?: 'BOOK' | 'PDNG' | 'SCHD' | 'CNCL' | 'RJCT' | 'HOLD' | 'OTHR'
   booking_date?: string
   value_date?: string
   transaction_date?: string
@@ -98,19 +102,25 @@ export type NormalizedEnableBankingTransaction = {
 // API client
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class EnableBankingRequestError extends Error {
-  constructor(
-    message: string,
-    readonly transient: boolean,
-  ) {
-    super(message)
-    this.name = 'EnableBankingRequestError'
-  }
-}
-
 export async function enableBankingRequest<TResponse>(
   path: string,
   options: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {},
+): Promise<TResponse> {
+  const guard = bankFetchContext.current()
+  await guard?.beforeRequest()
+  try {
+    return await request<TResponse>(path, options)
+  } catch (error) {
+    if (error instanceof EnableBankingRequestError && error.failure?.kind === 'rate_limited') {
+      await guard?.onRateLimit(error.failure)
+    }
+    throw error
+  }
+}
+
+async function request<TResponse>(
+  path: string,
+  options: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number },
 ): Promise<TResponse> {
   const requestOptions: RequestInit = {
     method: options.method ?? 'GET',
@@ -131,12 +141,14 @@ export async function enableBankingRequest<TResponse>(
       throw new EnableBankingRequestError(
         'Enable Banking did not respond in time. Please try again.',
         true,
+        providerFailure('timeout'),
       )
     }
     if (error instanceof TypeError) {
       throw new EnableBankingRequestError(
         'Enable Banking could not be reached. Please try again.',
         true,
+        providerFailure('network_error'),
       )
     }
 
@@ -157,13 +169,46 @@ export async function enableBankingRequest<TResponse>(
       response.status >= 500 ||
       providerCode === 'ASPSP_ERROR' ||
       providerCode === 'ASPSP_RATE_LIMIT_EXCEEDED'
+    const safeCode =
+      typeof providerCode === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(providerCode)
+        ? providerCode
+        : null
+    const retryAfter = response.headers.get('retry-after')
+    const retrySeconds =
+      retryAfter && /^\d+$/.test(retryAfter)
+        ? Number(retryAfter)
+        : retryAfter
+          ? Math.max(0, Math.ceil((Date.parse(retryAfter) - Date.now()) / 1000))
+          : null
+    const failure = providerFailure(
+      response.status === 429 || providerCode === 'ASPSP_RATE_LIMIT_EXCEEDED'
+        ? 'rate_limited'
+        : response.status === 401 || response.status === 403 || safeCode === 'EXPIRED_SESSION'
+          ? 'consent_expired'
+          : 'provider_error',
+      {
+        httpStatus: response.status,
+        providerCode: safeCode,
+        retryAfterSeconds:
+          retrySeconds !== null && Number.isSafeInteger(retrySeconds) ? retrySeconds : null,
+      },
+    )
     throw new EnableBankingRequestError(
-      `Enable Banking request failed (${response.status}): ${responseText}`,
+      `Enable Banking request failed (${response.status})${safeCode ? `: ${safeCode}` : ''}`,
       transient,
+      failure,
     )
   }
 
-  return response.json() as Promise<TResponse>
+  try {
+    return (await response.json()) as TResponse
+  } catch {
+    throw new EnableBankingRequestError(
+      'Enable Banking returned an invalid response',
+      false,
+      providerFailure('invalid_response'),
+    )
+  }
 }
 
 export async function getEnableBankingSessionAccounts(sessionId: string) {
@@ -238,23 +283,37 @@ export async function getEnableBankingTransactions(
     }>(`/accounts/${encodeURIComponent(accountId)}/transactions?${params.toString()}`)
 
     if (!Array.isArray(response.transactions)) {
-      throw new Error('Enable Banking returned a transaction page without transactions')
+      throw new EnableBankingRequestError(
+        'Enable Banking returned a transaction page without transactions',
+        false,
+        providerFailure('invalid_response'),
+      )
     }
     pages += 1
     if (pages > 1_000) {
-      throw new Error('Enable Banking transaction pagination exceeded 1,000 pages')
+      throw new EnableBankingRequestError(
+        'Enable Banking transaction pagination exceeded 1,000 pages',
+        false,
+        providerFailure('incomplete_response'),
+      )
     }
     transactions.push(...response.transactions)
     continuationKey = response.continuation_key
     if (continuationKey) {
       if (seenContinuationKeys.has(continuationKey)) {
-        throw new Error('Enable Banking repeated a transaction continuation key')
+        throw new EnableBankingRequestError(
+          'Enable Banking repeated a transaction continuation key',
+          false,
+          providerFailure('incomplete_response'),
+        )
       }
       seenContinuationKeys.add(continuationKey)
     }
   } while (continuationKey)
 
-  return transactions.filter((transaction) => transaction.status !== 'PDNG')
+  return transactions.filter(
+    (transaction) => transaction.status === undefined || transaction.status === 'BOOK',
+  )
 }
 
 function createEnableBankingJwt() {

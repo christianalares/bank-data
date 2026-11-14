@@ -142,9 +142,16 @@ describe('preliminary provider reads', () => {
       'fetch',
       vi.fn().mockResolvedValue(new Response('private provider detail', { status })),
     )
-    await expect(
-      getEnableBankingPreliminaryTransactions('account', { ...filters, authorize: async () => {} }),
-    ).rejects.toThrow('could not be retrieved')
+    const result = await getEnableBankingPreliminaryTransactions('account', {
+      ...filters,
+      authorize: async () => {},
+    })
+    expect(result.retrieval.complete).toBe(false)
+    expect(result.retrieval.pagesRetrieved).toBe(0)
+    expect(result.failure?.httpStatus).toBe(status)
+    expect(result.failure?.kind).toBe(
+      status === 429 ? 'rate_limited' : status === 401 ? 'consent_expired' : 'provider_error',
+    )
   })
 
   it.each([
