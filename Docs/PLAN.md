@@ -54,6 +54,12 @@ change only to the MCP service; retain the existing scheduled sync source and
 database configuration. The IaC records those separate sources without applying
 an infrastructure-wide plan.
 
+Code rollout acceptance: fresh backup and isolated restore verified; root
+quality gates, production health, authenticated scopes, live business output
+and unchanged source records verified. Patchbay discovers and permits the tool.
+Successful bank data retrieval through the gateway remains subject to upstream
+availability and rate limits; no register cutover or migration was performed.
+
 ## Repository consolidation
 
 Bring the bank MCP and bookkeeping implementation into `main` with its existing

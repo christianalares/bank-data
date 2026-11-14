@@ -75,9 +75,8 @@ Acceptance: 77 tests passed, four isolated-database tests skipped; typecheck,
 Biome, Drizzle checks, build and server smoke checks passed. A bounded live
 business-only read through a database connection enforcing read-only queries
 validated the output contract and preserved sync timestamps. Private operational
-evidence is kept outside the repository. The production tool registration and
-Patchbay discovery remain pending deployment; local acceptance is not a
-production rollout or register cutover.
+evidence is kept outside the repository. A register cutover is not part of this
+capability.
 
 Rollout rehearsal created a fresh backup, restored it into an isolated local
 database, and verified exact business record fingerprints. The database-enabled
@@ -85,3 +84,11 @@ suite passed 80 tests with one unrelated integration test skipped. Bookkeeping
 pagination acceptance now compares exact source identifiers and unchanged bank
 record fingerprints instead of assuming fixed snapshot counts. The MCP source
 is configured separately from the scheduled sync source so it can follow `main`.
+
+The production rollout passed health and authenticated tool-scope checks. A live
+business read passed the output contract. Current Patchbay discovery, definition
+and invocation permissions were verified; a subsequent gateway data read was
+deferred by an upstream rate limit. Further bank reads were stopped rather than
+retrying. Exact business record fingerprints and sync markers remained unchanged.
+No schema migration, consent change or scheduled-sync rollout was performed.
+Private deployment and provider evidence remains outside this repository.
