@@ -49,6 +49,11 @@ verification of the deployed tool and current Patchbay discovery. Keep private
 operational evidence outside the public repository. Deployment remains subject
 to the production change gates above.
 
+The MCP rollout uses the canonical `main` source branch. Apply the source
+change only to the MCP service; retain the existing scheduled sync source and
+database configuration. The IaC records those separate sources without applying
+an infrastructure-wide plan.
+
 ## Repository consolidation
 
 Bring the bank MCP and bookkeeping implementation into `main` with its existing

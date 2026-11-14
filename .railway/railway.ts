@@ -12,6 +12,10 @@ export default defineRailway((context) => {
     branch: 'codex/bank-mcp-migration',
     checkSuites: false,
   })
+  const mcpSource = github('christianalares/bank-data', {
+    branch: 'main',
+    checkSuites: false,
+  })
 
   // Existing service [private resource identifier]. Railway binds
   // this resource by database.Postgres; preserve that address and its volume.
@@ -28,7 +32,7 @@ export default defineRailway((context) => {
   })
   // Existing service [private resource identifier].
   const mcp = service('mcp', {
-    source: migrationBranch,
+    source: mcpSource,
     build: 'pnpm build:server',
     start: 'pnpm start:mcp',
     replicas: { 'europe-west4-drams3a': 1 },
