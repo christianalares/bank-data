@@ -78,3 +78,10 @@ validated the output contract and preserved sync timestamps. Private operational
 evidence is kept outside the repository. The production tool registration and
 Patchbay discovery remain pending deployment; local acceptance is not a
 production rollout or register cutover.
+
+Rollout rehearsal created a fresh backup, restored it into an isolated local
+database, and verified exact business record fingerprints. The database-enabled
+suite passed 80 tests with one unrelated integration test skipped. Bookkeeping
+pagination acceptance now compares exact source identifiers and unchanged bank
+record fingerprints instead of assuming fixed snapshot counts. The MCP source
+is configured separately from the scheduled sync source so it can follow `main`.
