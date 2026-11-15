@@ -110,11 +110,21 @@ a six-hour minimum delay or a longer Retry-After. These deadlines do not establi
 the bank's actual quota/reset. The separate unfiltered request preserves the
 existing BOOK boundary; reuse as a full historical feed remains unverified.
 
-The additive Drizzle migration was applied to an isolated restore. Synthetic
-provider responses exercised the database, coordinator, stored reads and existing
-bookkeeping integrity without real bank calls. Production migration, both service
-rollouts and current Patchbay acceptance are pending the specific rollout gates.
-Private evidence and banking contents remain outside the public repository.
+The additive Drizzle migration was rehearsed on a fresh isolated restore and
+applied before the authorized service rollout. Synthetic provider responses
+exercised the database, coordinator, stored reads and existing bookkeeping
+integrity without real bank calls. Both services now follow the reviewed `main`
+source, with the existing sync schedule and a conservative startup cooldown.
+No infrastructure-wide IaC plan or register cutover was applied.
+
+Production health, bearer guards, four authenticated tool scopes, exact
+bookkeeping pagination and current Patchbay stored-read invocation passed
+acceptance. Repeated and concurrent reads reported the absence of an initial
+snapshot explicitly. Existing source record fingerprints and sync markers
+remained unchanged, and acceptance made no additional provider requests. The prior
+MCP version also passed compatibility checks against the migrated restore; retain
+the additive tables if code rollback is needed. Private backup and deployment
+evidence and banking contents remain outside the public repository.
 
 Acceptance passed 93 database-enabled tests with one unrelated integration test
 skipped, plus typecheck, Biome, Drizzle consistency, build and server smoke checks.

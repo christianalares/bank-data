@@ -70,18 +70,22 @@ tests, and preserve exact existing business fingerprints. Verify repeated and
 concurrent MCP reads with zero network requests, multiple sync connections,
 429/backoff, partial pages, complete emptiness, stale coverage and changed access.
 
-Production rollout is pending specific migration authorization under the gates
-above. Before rollout, create and verify a fresh backup, rehearse this migration,
-and compare existing record fingerprints. Apply the additive migration before
-releasing code. Deploy MCP and move the existing scheduled sync source to the
-same reviewed `main` version so every refresh uses the coordinator. Do not apply
-an infrastructure-wide IaC plan. Seed a conservative cooldown using verified
-private evidence of the most recent rate limit; do not probe the bank to discover
-its reset. Verify health, tool definition/permissions, stored reads and unchanged
-source records without routine live bank calls. No snapshot exists until a
-permitted sync completes: report dataAvailable=false and do not promise an
-immediate first refresh. Retain the tables if code rollback is needed; never
-reset or replace production data. This is not a register cutover.
+The authorized production rollout applied the additive migration before releasing
+code. MCP and the existing scheduled sync now follow the same reviewed `main`
+source and use the coordinator. A fresh backup was restored, the migration was
+rehearsed and safely reapplied, and the prior MCP version passed compatibility
+checks against the migrated restore. Existing source record fingerprints remained
+unchanged through release acceptance. No infrastructure-wide IaC plan was applied.
+
+A conservative startup cooldown was seeded following the previously documented
+rate limit; no bank reset time was inferred or probed. Health, authenticated tool
+scopes, exact bookkeeping pagination and current Patchbay stored-read invocation
+passed acceptance without additional provider requests. The existing schedule is
+retained. No snapshot exists until a permitted sync completes: report
+dataAvailable=false and do not promise an immediate first refresh. Retain the
+tables if code rollback is needed; never reset or replace production data. Private
+backup and deployment evidence remains outside the repository. This is not a
+register cutover.
 
 ## Repository consolidation
 

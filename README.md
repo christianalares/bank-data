@@ -160,7 +160,7 @@ migration history.
 `railway.mcp.toml` builds and starts the MCP service with a `/health` check.
 `.railway/railway.ts` defines the existing PostgreSQL service and protected
 volume, MCP service, and scheduled bank sync. The application service definitions
-track `codex/bank-mcp-migration`.
+track `main`.
 
 `pnpm db:migrate` targets the `DATABASE_URL` in the local `.env` file.
 `pnpm db:migrate:prod` uses the process environment and must only be run after
