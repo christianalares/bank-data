@@ -3,6 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type bankConnection, bankTransaction, type Database } from '#db'
 import { runBankSync } from './bank-sync'
 
+vi.mock('./fetch-coordinator', async (original) => ({
+  ...(await original<typeof import('./fetch-coordinator')>()),
+  recordBankFetchFailure: vi.fn().mockResolvedValue(undefined),
+  withCoordinatedBankFetch: async (
+    _db: unknown,
+    _workspace: string,
+    initial: Date | null,
+    operation: () => Promise<unknown>,
+  ) =>
+    initial && initial > new Date()
+      ? { deferred: true, reason: 'cooldown' }
+      : { deferred: false, result: await operation() },
+}))
+vi.mock('./upcoming-observations', () => ({
+  refreshBusinessUpcomingObservations: vi.fn().mockResolvedValue(undefined),
+}))
+
 type BankConnection = typeof bankConnection.$inferSelect
 
 function connection(id: string, overrides: Partial<BankConnection> = {}): BankConnection {
@@ -305,6 +322,27 @@ describe('bank sync provider failures', () => {
     } else {
       expect(db.insert).toHaveBeenCalledWith(bankTransaction)
     }
+  })
+
+  it('does not expose bank payload parameters in database failure summaries', async () => {
+    const { db } = database([connection('synthetic')])
+    db.insert.mockImplementation(() => {
+      throw Object.assign(new Error('Failed query: private-payment-reference'), {
+        query: 'insert into bank_account',
+        params: ['private-payment-reference'],
+      })
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => jsonResponse({ balances: [], transactions: [] })),
+    )
+    await expect(runBankSync({ overlapDays: 14 }, db as unknown as Database)).rejects.toThrow(
+      'Bank database operation failed',
+    )
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.stringContaining('private-payment-reference') }),
+    )
   })
 
   it('still fails the job for data-integrity errors', async () => {

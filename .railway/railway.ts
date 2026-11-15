@@ -8,11 +8,7 @@ export default defineRailway((context) => {
     throw new Error('This configuration targets the existing production environment only.')
   }
 
-  const migrationBranch = github('christianalares/bank-data', {
-    branch: 'codex/bank-mcp-migration',
-    checkSuites: false,
-  })
-  const mcpSource = github('christianalares/bank-data', {
+  const bankSource = github('christianalares/bank-data', {
     branch: 'main',
     checkSuites: false,
   })
@@ -32,7 +28,7 @@ export default defineRailway((context) => {
   })
   // Existing service [private resource identifier].
   const mcp = service('mcp', {
-    source: mcpSource,
+    source: bankSource,
     build: 'pnpm build:server',
     start: 'pnpm start:mcp',
     replicas: { 'europe-west4-drams3a': 1 },
@@ -55,7 +51,7 @@ export default defineRailway((context) => {
     },
   })
   const bankSync = service('bank-sync', {
-    source: migrationBranch,
+    source: bankSource,
     build: 'pnpm build:server',
     start: 'pnpm start:sync',
     deploy: {

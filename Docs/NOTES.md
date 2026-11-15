@@ -92,3 +92,33 @@ deferred by an upstream rate limit. Further bank reads were stopped rather than
 retrying. Exact business record fingerprints and sync markers remained unchanged.
 No schema migration, consent change or scheduled-sync rollout was performed.
 Private deployment and provider evidence remains outside this repository.
+
+
+## Stored preliminary observations
+
+The upcoming MCP read now uses stored source observations. Only complete
+snapshots become current; a failed or partial attempt records its provenance and
+safe failure while retaining the prior complete snapshot and its original age.
+A complete empty result is distinct from an account never successfully observed.
+Snapshots are bound to the currently included source and consent, rechecked on
+reads. No stable payment identity, signing or invoice decision is inferred.
+
+The existing sync refreshes observations alongside its BOOK import under a
+PostgreSQL advisory lock and committed workspace cooldown. Explicit sync requests
+cannot bypass the shared wait. A rate limit stops further requests and preserves
+a six-hour minimum delay or a longer Retry-After. These deadlines do not establish
+the bank's actual quota/reset. The separate unfiltered request preserves the
+existing BOOK boundary; reuse as a full historical feed remains unverified.
+
+The additive Drizzle migration was applied to an isolated restore. Synthetic
+provider responses exercised the database, coordinator, stored reads and existing
+bookkeeping integrity without real bank calls. Production migration, both service
+rollouts and current Patchbay acceptance are pending the specific rollout gates.
+Private evidence and banking contents remain outside the public repository.
+
+Acceptance passed 93 database-enabled tests with one unrelated integration test
+skipped, plus typecheck, Biome, Drizzle consistency, build and server smoke checks.
+The migration was safely reapplied to the isolated database. Existing business
+record fingerprints matched the restored baseline after the tests, and synthetic
+fixtures were removed. MCP integration calls were validated through the SDK and
+made no additional provider requests.

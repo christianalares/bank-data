@@ -127,6 +127,13 @@
       "when": 1791739537946,
       "tag": "0017_unknown_payment_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794689950788,
+      "tag": "0018_stored_bank_observations",
+      "breakpoints": true
     }
   ]
 }

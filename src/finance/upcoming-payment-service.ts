@@ -1,15 +1,12 @@
-import { and, eq, inArray } from 'drizzle-orm'
-import { z } from 'zod'
-import { bankAccount, bankConnection, createDb, type Database, workspace } from '#db'
-import {
-  getEnableBankingPreliminaryTransactions,
-  UpcomingPaymentsReadError,
-} from '../banking/upcoming-payments'
-import { loadSelectedBankAccounts } from './bank-accounts'
+import { and, desc, eq } from 'drizzle-orm'
+import { bankFetchState, bankUpcomingSnapshot, createDb, type Database } from '#db'
+import { UpcomingPaymentsReadError } from '../banking/upcoming-payments'
+import { BACKGROUND_FETCH_INTERVAL_MS } from '../sync/fetch-coordinator'
 import {
   type ListBusinessUpcomingPaymentsInput,
   listBusinessUpcomingPaymentsInputSchema,
 } from './upcoming-payment-schemas'
+import { resolveBusinessPaymentSource } from './upcoming-payment-source'
 
 export class BusinessUpcomingPaymentService {
   constructor(
@@ -19,21 +16,57 @@ export class BusinessUpcomingPaymentService {
 
   async listPayments(input: ListBusinessUpcomingPaymentsInput) {
     const filters = listBusinessUpcomingPaymentsInputSchema.parse(input)
-    const source = await this.source(filters.accountId)
-    const result = await getEnableBankingPreliminaryTransactions(source.providerAccountId, {
-      ...filters,
-      authorize: async () => {
-        const current = await this.source(filters.accountId)
-        if (
-          current.providerAccountId !== source.providerAccountId ||
-          current.connectionId !== source.connectionId
-        ) {
-          throw new UpcomingPaymentsReadError('Account access changed during the request')
-        }
-      },
-    })
-    const excludedStatuses = new Map<string | null, number>()
-    let excludedByValueDateCount = 0
+    const source = await resolveBusinessPaymentSource(this.db, this.workspaceId, filters.accountId)
+    const conditions = and(
+      eq(bankUpcomingSnapshot.workspaceId, this.workspaceId!),
+      eq(bankUpcomingSnapshot.accountId, source.id),
+      eq(bankUpcomingSnapshot.connectionId, source.connectionId),
+      eq(bankUpcomingSnapshot.providerAccountId, source.providerAccountId),
+    )
+    const [snapshot, attempt, fetchState] = await Promise.all([
+      this.db.query.bankUpcomingSnapshot.findFirst({
+        where: and(conditions, eq(bankUpcomingSnapshot.complete, true)),
+        orderBy: [desc(bankUpcomingSnapshot.storedAt), desc(bankUpcomingSnapshot.id)],
+      }),
+      this.db.query.bankUpcomingSnapshot.findFirst({
+        where: conditions,
+        orderBy: [desc(bankUpcomingSnapshot.storedAt), desc(bankUpcomingSnapshot.id)],
+      }),
+      this.db.query.bankFetchState.findFirst({
+        where: eq(bankFetchState.workspaceId, this.workspaceId!),
+      }),
+    ])
+    const current = await resolveBusinessPaymentSource(this.db, this.workspaceId, filters.accountId)
+    if (
+      current.id !== source.id ||
+      current.connectionId !== source.connectionId ||
+      current.providerAccountId !== source.providerAccountId
+    )
+      throw new UpcomingPaymentsReadError('Account access changed during the request')
+    const result = {
+      entries: snapshot?.entries ?? [],
+      retrieval: snapshot
+        ? {
+            startedAt: snapshot.startedAt.toISOString(),
+            retrievedAt: snapshot.retrievedAt?.toISOString() ?? null,
+            pagesRetrieved: snapshot.pagesRetrieved,
+            complete: snapshot.complete,
+            incompleteReason: snapshot.incompleteReason,
+          }
+        : null,
+    }
+    const now = new Date()
+    const ageSeconds = snapshot?.retrievedAt
+      ? Math.max(0, Math.floor((now.getTime() - snapshot.retrievedAt.getTime()) / 1000))
+      : null
+    const requestedRangeCovered = Boolean(
+      snapshot && snapshot.dateFrom <= filters.dateFrom && snapshot.dateTo >= filters.dateTo,
+    )
+    const failure = fetchState?.failure ?? attempt?.failure ?? null
+    const excludedStatuses = new Map<string | null, number>(
+      snapshot?.excludedStatusCounts.map((r) => [r.providerStatus, r.count]) ?? [],
+    )
+    let excludedByValueDateCount = snapshot?.excludedByValueDateCount ?? 0
     const entries = result.entries.flatMap(({ transaction: t, retrievedAt }) => {
       if (t.status !== 'PDNG' && t.status !== 'SCHD') {
         const status = t.status ?? null
@@ -100,54 +133,49 @@ export class BusinessUpcomingPaymentService {
       })),
       excludedByValueDateCount,
       retrieval: result.retrieval,
+      observation: {
+        dataAvailable: Boolean(snapshot),
+        snapshotId: snapshot?.id ?? null,
+        dateFrom: snapshot?.dateFrom ?? null,
+        dateTo: snapshot?.dateTo ?? null,
+        ageSeconds,
+        requestedRangeCovered,
+        stale:
+          ageSeconds === null ||
+          ageSeconds * 1000 >= BACKGROUND_FETCH_INTERVAL_MS ||
+          !requestedRangeCovered ||
+          Boolean(failure),
+      },
+      refresh: {
+        scope: 'workspace' as const,
+        lastAttemptAt:
+          fetchState?.lastAttemptAt?.toISOString() ?? attempt?.startedAt.toISOString() ?? null,
+        lastFinishedAt: fetchState?.lastFinishedAt?.toISOString() ?? null,
+        lastAttemptComplete:
+          fetchState?.lastAttemptAt && (!attempt || fetchState.lastAttemptAt > attempt.startedAt)
+            ? failure
+              ? false
+              : null
+            : (attempt?.complete ?? null),
+        lastObservationAttempt: attempt
+          ? {
+              dateFrom: attempt.dateFrom,
+              dateTo: attempt.dateTo,
+              startedAt: attempt.startedAt.toISOString(),
+              retrievedAt: attempt.retrievedAt?.toISOString() ?? null,
+              complete: attempt.complete,
+              pagesRetrieved: attempt.pagesRetrieved,
+              incompleteReason: attempt.incompleteReason,
+              failure: attempt.failure,
+            }
+          : null,
+        failure,
+        nextAllowedAt: fetchState?.nextAllowedAt?.toISOString() ?? null,
+        inProgress: Boolean(fetchState?.leaseUntil && fetchState.leaseUntil > now),
+        blocked: Boolean(fetchState?.nextAllowedAt && fetchState.nextAllowedAt > now),
+      },
       instructionCoverage: 'not_guaranteed' as const,
     }
-  }
-
-  private async source(accountId: string) {
-    const id = z.string().uuid().safeParse(this.workspaceId)
-    if (!id.success)
-      throw new UpcomingPaymentsReadError('Configured business workspace is unavailable')
-    const [owner] = await this.db
-      .select({ id: workspace.id })
-      .from(workspace)
-      .where(and(eq(workspace.id, id.data), eq(workspace.kind, 'business')))
-      .limit(1)
-    if (!owner) throw new UpcomingPaymentsReadError('Configured business workspace is unavailable')
-
-    const accounts = await loadSelectedBankAccounts(this.db, id.data, 'business')
-    const account = accounts.find((a) => a.id === accountId)
-    if (!account) throw new UpcomingPaymentsReadError('Selected business account is unavailable')
-
-    const rows = await this.db
-      .select({
-        id: bankAccount.id,
-        providerAccountId: bankAccount.providerAccountId,
-        connectionId: bankConnection.id,
-        consentValidUntil: bankConnection.consentValidUntil,
-      })
-      .from(bankAccount)
-      .innerJoin(bankConnection, eq(bankAccount.connectionId, bankConnection.id))
-      .where(
-        and(
-          eq(bankAccount.workspaceId, id.data),
-          eq(bankAccount.included, true),
-          inArray(bankAccount.id, account.sourceIds),
-          eq(bankConnection.workspaceId, id.data),
-          eq(bankConnection.provider, 'enable_banking'),
-          eq(bankConnection.status, 'connected'),
-        ),
-      )
-    rows.sort((a, b) => account.sourceIds.indexOf(a.id) - account.sourceIds.indexOf(b.id))
-    const current = rows[0]
-    if (
-      !current ||
-      !current.providerAccountId ||
-      (current.consentValidUntil && current.consentValidUntil.getTime() <= Date.now())
-    ) {
-      throw new UpcomingPaymentsReadError('Business bank connection is unavailable or expired')
-    }
-    return { ...current, account }
   }
 }
 

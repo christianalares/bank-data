@@ -98,10 +98,10 @@ function registerUpcomingPaymentTool(server: McpServer) {
     {
       title: 'Read preliminary business bank entries',
       description:
-        'Fetch live preliminary/future bank entries for one selected canonical business account and an inclusive value_date range of at most 93 days. Discover business accounts first. Returns source PDNG or SCHD entries, including today and undated entries (dateRangeMatch=unknown); card reservations may be included. BOOK and other statuses are excluded and counted. Amounts retain source precision; direction comes from creditDebitIndicator. valueDate is not a confirmed execution date. signingStatus=not_provided: PDNG does not prove signing or payment. Check retrieval.complete and incompleteReason; full API pagination does not guarantee all bank instructions. Entries have no invented stable IDs; duplicates are preserved. A disappearance proves no payment outcome. This read never changes invoices or booked history. Background provider limits apply: avoid repeated polling.',
+        'Read stored preliminary/future bank observations for one selected canonical business account and an inclusive value_date range of at most 93 days. This tool never calls the bank or triggers refreshes. The existing bank sync refreshes a 93-day UTC window. Check observation.dataAvailable, ageSeconds, stale and requestedRangeCovered, and refresh.failure/nextAllowedAt. No stored complete snapshot means dataAvailable=false, not a confirmed empty list. A failed or partial refresh preserves the last complete snapshot, including its original retrieval timestamp. Returns raw PDNG/SCHD status, precise amounts, references and source dates; card reservations and undated entries may appear. valueDate is not a confirmed execution date; signingStatus=not_provided. API pagination does not guarantee full instruction coverage. No stable IDs are invented; duplicate entries are preserved. A disappearance proves no payment outcome. This read never changes invoices or booked history.',
       inputSchema: listBusinessUpcomingPaymentsInputSchema,
       outputSchema: businessUpcomingPaymentsSchema,
-      annotations: { ...readOnlyAnnotations, openWorldHint: true },
+      annotations: readOnlyAnnotations,
     },
     async (input) =>
       executeOperation(async () => {
@@ -111,8 +111,8 @@ function registerUpcomingPaymentTool(server: McpServer) {
             event: 'bank_mcp_read',
             toolName: 'list_business_upcoming_payments',
             resultCount: result.entries.length,
-            complete: result.retrieval.complete,
-            pagesRetrieved: result.retrieval.pagesRetrieved,
+            complete: result.retrieval?.complete ?? false,
+            pagesRetrieved: result.retrieval?.pagesRetrieved ?? 0,
           }),
         )
         return result
@@ -506,6 +506,9 @@ async function executeOperation<T extends Record<string, unknown>>(operation: ()
         },
       ],
       isError: true,
+      ...(error instanceof UpcomingPaymentsReadError && error.failure
+        ? { structuredContent: { error: error.failure } }
+        : {}),
     }
   }
 }

@@ -118,9 +118,10 @@ entry without storing the search query text.
 
 ## Preliminary business bank entries
 
-`list_business_upcoming_payments` provides a separate live read of preliminary
-entries, including payments entered for a future date. Discover the canonical
-business account ID with the account-list tool in your context, then call:
+`list_business_upcoming_payments` reads stored preliminary observations for one
+selected canonical business account. It never calls the bank, even when data is
+missing, stale or a previous refresh failed. Repeated and concurrent reads do
+not consume provider requests. Discover business accounts first, then call:
 
 ```json
 {
@@ -130,61 +131,87 @@ business account ID with the account-list tool in your context, then call:
 }
 ```
 
-The example identifier and dates are synthetic; supply your selected account
-and intended dates. One canonical account and an inclusive range of at most
-93 days are required. The configured `BANK_CONSENT_BUSINESS_WORKSPACE_ID` must
-identify a business workspace. Only its included accounts with a current,
-connected Enable Banking source can be read. Renewed aliases resolve to the
-current provider account. Authorization is checked for every provider page and
-again before returning results. Personal, consent and bookkeeping-only tokens
-do not expose this tool.
+The identifier and dates are synthetic. Supply one canonical account and an
+inclusive date range of at most 93 days. The configured business workspace must
+exist. Every read checks workspace kind, inclusion, current provider alias,
+connection ownership and consent validity, then rechecks access before returning.
+Connected and transient-error connections can serve observations; disconnected,
+expired or excluded sources cannot. Snapshots from a former provider account or
+consent are not silently inherited by a renewed source. Business and all-bank
+credentials expose this tool; personal, consent and bookkeeping-only credentials
+have no new access.
 
-The request uses the existing account-transactions endpoint with `strategy=default`
-and no status filter. The SEB Sweden connector has rejected `transaction_status=SCHD`;
-generic API status support does not establish connector support. The booked
-import retains its existing BOOK filter and pending-entry exclusion.
+The existing bank sync stores timestamped observation attempts in
+`bank_upcoming_snapshot`, separately from booked rows and bookkeeping registers.
+It fetches the UTC day of refresh through 92 days ahead with `strategy=default`
+and no status filter. The SEB connector has rejected SCHD as a request filter.
+Only raw PDNG/SCHD entries within the source value_date window, plus undated
+entries, are stored. Other statuses are counted without storing their payloads.
+The BOOK request remains separate: an unfiltered future feed has not been
+verified as a replacement for full booked-history retrieval. Non-BOOK statuses
+are excluded from booked imports; legacy responses without a status retain
+existing import behavior.
 
-Only source `PDNG` and `SCHD` entries are returned, without changing their status.
-Other statuses, including BOOK, cancelled, rejected, unknown and missing statuses,
-are excluded and counted in `excludedStatusCounts`. Locally, dates are filtered
-only by inclusive `value_date`, reported as `valueDate`. Today is included when
-within the requested range. Undated entries supplied by the provider are included
-with `dateRangeMatch=unknown`; the provider's own date filtering may still omit
-them. Other source dates remain `bookingDate` and `transactionDate`. `valueDate`
-is not a separately confirmed execution date. Card reservations are not classified
-or removed by heuristics and may appear alongside other preliminary entries.
+Each attempt records its actual source account and consent, date window, start
+and retrieval times, page completeness, safe failure metadata and ordered entries.
+A complete successful snapshot becomes current, including a complete empty one.
+Failed and partial attempts remain recorded but never replace the latest complete
+snapshot. No payment identity is inferred: identical instructions remain separate
+array entries, source IDs remain nullable, and snapshotId identifies a service
+observation rather than a bank instruction. No old snapshot disappearance changes
+an invoice, payment, match or Gmail state.
 
-Each entry includes its canonical account and bank name, source decimal amount
-and currency, DBIT/CRDT indicator, creditor and account identifier with the actual
-source scheme, reference number and scheme, remittance, source IDs, dates, bank
-transaction code, and retrieval timestamp. Missing values remain null. Decimal
-precision and signs are preserved verbatim; use the direction indicator rather
-than assuming the amount's sign. BBAN is not relabeled Bankgiro. Reference numbers
-may be Swedish OCR references; no invoice classification is performed.
+Interpret these output fields together:
 
-Signing information is not supplied by this reading contract:
-`signingStatus=not_provided`. Neither PDNG nor a future date proves signing or
-payment. IDs are never synthesized, and identical entries are preserved. These
-results cannot establish identity across reads when bank IDs are absent. An entry
-disappearing establishes no completed, failed, cancelled or unpaid state. Codex
-must review explicit evidence before recording any invoice decision.
+- `observation.dataAvailable`: whether a complete stored snapshot exists. False
+  with entries=[] is unobserved data, not a confirmed empty bank list.
+- `observation.dateFrom/dateTo`, `requestedRangeCovered`, `ageSeconds`, and `stale`:
+  the snapshot's source window and age. Data is flagged stale after six hours,
+  after a failed attempt, or if the requested range is not covered. Daily sync
+  observations will therefore often be marked stale between refreshes.
+- `retrieval`: the selected complete snapshot's original timestamps and pagination,
+  or null when none exists. Serving old data never assigns a new retrieval time.
+- `refresh`: workspace refresh start/finish times, latest observation-attempt
+  completeness, `lastObservationAttempt` with its dates/pages, safe `failure`,
+  `nextAllowedAt`, `blocked`, and `inProgress`.
+  The refresh budget and errors are scoped to the workspace; an error can concern
+  another connection in that workspace. The timestamp of the observation remains
+  account-specific. A running refresh can leave lastAttemptComplete unknown.
 
-The service follows continuation keys even after empty pages, keeping other
-provider parameters unchanged. Reads stop at 20 pages, 2,000 source entries, or
-a 20-second provider-read budget. `retrieval.complete` describes API-page
-completion only; `instructionCoverage=not_guaranteed` always applies. Repeated
-cursors, bounds, malformed responses and later provider failures return partial
-data with `complete=false` and an explicit `incompleteReason`. A failure before
-any successful page is an MCP error, never a successful empty list. Access
-revocation discards results. `retrievedAt` is the last successful page time;
-individual entries carry their page's retrieval time. Pages are not an atomic
-bank snapshot. There is no client continuation cursor: after an incomplete
-read, review the reason before narrowing the range or retrying.
+Amounts are decimal strings with their source precision and sign. Use
+creditDebitIndicator for DBIT/CRDT direction. Names, actual creditor account
+schemes, reference/OCR numbers, remittance, bank codes and dates preserve supplied
+values; missing fields remain null. BBAN is not relabeled Bankgiro. Date filtering
+uses value_date only, exposed as valueDate. Today is included within the requested
+range. Undated entries have dateRangeMatch=unknown and may be absent if the bank
+omitted them from its own date-filtered response. Card reservations are not
+classified or heuristically removed. valueDate is not a confirmed execution date.
 
-No preliminary data is persisted or cached, no booked rows or sync timestamps
-are changed, and no automatic retries run. These are background provider reads,
-so avoid polling: they share the bank's request limits with existing sync.
-Rate limits and expired consents remain errors or explicit partial results.
+Signing remains `not_provided`. PDNG, a future date, and an entry disappearing
+prove no signing or payment outcome. `instructionCoverage=not_guaranteed` applies
+even to complete API pagination. Codex reviews explicit evidence before recording
+any bookkeeping decision.
+
+Provider reads continue after empty cursor pages and stop at 20 pages, 2,000
+source entries or a 20-second budget per preliminary read. Malformed responses,
+repeated cursors, limits and provider failures produce incomplete attempts. Safe
+failure kinds distinguish rate_limited, consent_expired, provider_error,
+invalid_response, timeout, network_error, configuration_error,
+authorization_changed and incomplete_response. They can include HTTP status, a
+validated provider error code and Retry-After seconds, without raw error bodies.
+Pages are not an atomic bank snapshot.
+
+The existing sync coordinates background refreshes through PostgreSQL workspace
+advisory locks and committed bank_fetch_state rows. The conservative shared
+cooldown survives restarts and also applies to explicitly targeted history and
+workspace syncs. Network requests verify the lock connection before each page.
+A 429 stops remaining requests and advances the deadline by at least six hours,
+or longer when Retry-After requests it. The deadline is our earliest permitted
+attempt, not a verified bank reset time. No immediate 429 retry occurs. Sync uses
+its existing schedule; there is no new polling job or MCP refresh-on-expiry path.
+An operator can run the existing sync with `--workspace-id UUID` after the shared
+cooldown. No PSU headers or synthetic online-user context are introduced. The
+separate consent bootstrap workflow is unchanged.
 
 Source contracts: [Enable Banking transactions and statuses](https://enablebanking.com/docs/api/reference/#get-account-transactions),
 [pagination, IDs and background limits](https://enablebanking.com/docs/faq/), and
